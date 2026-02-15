@@ -44,7 +44,7 @@ fi
 echo "[4/6] Setting up Python environment..."
 python3 -m venv venv
 ./venv/bin/pip install --quiet -r requirements.txt
-./venv/bin/pip install --quiet RPi.GPIO spidev gpiozero
+./venv/bin/pip install --quiet RPi.GPIO spidev gpiozero lgpio
 
 # 5. Waveshare EPD drivers (download only needed files, not the huge repo)
 echo "[5/6] Installing Waveshare display drivers..."
