@@ -50,5 +50,14 @@ class Config:
     def active_module(self):
         return self.get("active_module", default="calendar")
 
+    @property
+    def rotation(self) -> list:
+        """List of {"module": "name", "duration_minutes": N} entries."""
+        return self.get("rotation", default=[])
+
+    @property
+    def rotation_enabled(self) -> bool:
+        return len(self.rotation) > 1
+
     def module_settings(self, name: str) -> dict:
         return self.get("modules", name, default={})

@@ -298,3 +298,25 @@ input[type="file"] {
   text-align: center;
   padding: 3rem 0;
 }
+
+/* Rotation entries */
+.rotation-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.rotation-entry select {
+  width: auto;
+  flex: 1;
+}
+
+.rotation-entry input[type="number"] {
+  width: 80px;
+  flex: none;
+}

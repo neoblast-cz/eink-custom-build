@@ -25,6 +25,7 @@ def create_app(config, module_registry, scheduler):
             active_module=config.active_module,
             modules=module_registry,
             refresh_minutes=config.refresh_minutes,
+            rotation=config.rotation,
         )
 
     @app.route("/settings", methods=["GET", "POST"])
@@ -34,11 +35,32 @@ def create_app(config, module_registry, scheduler):
                 int(request.form.get("refresh_minutes", 30)),
                 "display", "refresh_interval_minutes",
             )
-            config.set(request.form.get("active_module", "calendar"), "active_module")
+
+            # Build rotation list from parallel form arrays
+            rot_modules = request.form.getlist("rotation_module")
+            rot_durations = request.form.getlist("rotation_duration")
+            rotation = []
+            for mod, dur in zip(rot_modules, rot_durations):
+                rotation.append({
+                    "module": mod,
+                    "duration_minutes": int(dur) if dur else 5,
+                })
+            config.set(rotation, "rotation")
+
+            # Set active_module to the first rotation entry for fallback
+            if rotation:
+                config.set(rotation[0]["module"], "active_module")
+
             config.save()
             return redirect(url_for("index"))
+
+        rotation = config.rotation
+        if not rotation:
+            # Default: show current active module
+            rotation = [{"module": config.active_module, "duration_minutes": config.refresh_minutes}]
+
         return render_template(
-            "settings.html", config=config, modules=module_registry
+            "settings.html", config=config, modules=module_registry, rotation=rotation
         )
 
     @app.route("/module/<name>", methods=["GET", "POST"])

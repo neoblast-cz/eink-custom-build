@@ -10,8 +10,9 @@ class Renderer:
         self.modules = module_registry
         self.display = display
 
-    def render_and_display(self):
-        module_name = self.config.active_module
+    def render_and_display(self, module_name=None):
+        if module_name is None:
+            module_name = self.config.active_module
         module = self.modules.get(module_name)
 
         if module is None:

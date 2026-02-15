@@ -36,8 +36,8 @@ def main():
     display = DisplayDriver()
     renderer = Renderer(config, MODULE_REGISTRY, display)
     scheduler = Scheduler(
-        refresh_callback=renderer.render_and_display,
-        get_interval_fn=lambda: config.refresh_minutes,
+        render_module_fn=renderer.render_and_display,
+        config=config,
     )
 
     scheduler.start()

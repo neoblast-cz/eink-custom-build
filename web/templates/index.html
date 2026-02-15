@@ -11,11 +11,18 @@
 
   <section class="module-panel">
     <div class="status-bar">
+      {% if rotation|length > 1 %}
+      <span class="status-label">Rotation:</span>
+      <span class="status-value">
+        {% for entry in rotation %}{{ modules[entry.module].DISPLAY_NAME if entry.module in modules else entry.module }} ({{ entry.duration_minutes }}m){% if not loop.last %} → {% endif %}{% endfor %}
+      </span>
+      {% else %}
       <span class="status-label">Active:</span>
       <span class="status-value">{{ modules[active_module].DISPLAY_NAME if active_module in modules else 'None' }}</span>
       <span class="status-sep">|</span>
       <span class="status-label">Interval:</span>
       <span class="status-value">{{ refresh_minutes }} min</span>
+      {% endif %}
     </div>
 
     <h3>Modules</h3>
