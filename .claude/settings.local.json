@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git config:*)",
+      "Bash(gh api:*)",
+      "Bash(python3:*)",
+      "Bash(/c/Users/neobl/AppData/Local/Microsoft/WindowsApps/python.exe:*)"
+    ]
+  }
+}

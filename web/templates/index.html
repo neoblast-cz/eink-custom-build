@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard">
+  <section class="preview-panel">
+    <h2>Current Display</h2>
+    <div class="preview-frame">
+      <img src="/preview" alt="Display preview" class="display-preview" id="previewImg">
+    </div>
+    <button class="btn-primary" id="refreshBtn" onclick="doRefresh()">Refresh Now</button>
+  </section>
+
+  <section class="module-panel">
+    <div class="status-bar">
+      <span class="status-label">Active:</span>
+      <span class="status-value">{{ modules[active_module].DISPLAY_NAME if active_module in modules else 'None' }}</span>
+      <span class="status-sep">|</span>
+      <span class="status-label">Interval:</span>
+      <span class="status-value">{{ refresh_minutes }} min</span>
+    </div>
+
+    <h3>Modules</h3>
+    <div class="module-list">
+      {% for name, module in modules.items() %}
+      <div class="module-card {% if name == active_module %}active{% endif %}">
+        <div class="module-info">
+          <strong>{{ module.DISPLAY_NAME }}</strong>
+          <p>{{ module.DESCRIPTION }}</p>
+        </div>
+        <a href="/module/{{ name }}" class="btn-secondary">Configure</a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<script>
+function doRefresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn.textContent = 'Refreshing...';
+  btn.disabled = true;
+  fetch('/refresh', { method: 'POST' })
+    .then(() => {
+      setTimeout(() => {
+        document.getElementById('previewImg').src = '/preview?' + Date.now();
+        btn.textContent = 'Refresh Now';
+        btn.disabled = false;
+      }, 2000);
+    })
+    .catch(() => {
+      btn.textContent = 'Refresh Now';
+      btn.disabled = false;
+    });
+}
+
+// Auto-refresh preview every 30s
+setInterval(() => {
+  document.getElementById('previewImg').src = '/preview?' + Date.now();
+}, 30000);
+</script>
+{% endblock %}

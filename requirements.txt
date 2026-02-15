@@ -1,0 +1,5 @@
+flask>=3.0
+Pillow>=10.0
+icalendar>=5.0
+requests>=2.31
+python-dateutil>=2.8

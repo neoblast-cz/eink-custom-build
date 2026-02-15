@@ -1,0 +1,19 @@
+{
+  "display": {
+    "width": 800,
+    "height": 480,
+    "rotation": 0,
+    "refresh_interval_minutes": 30
+  },
+  "active_module": "photos",
+  "modules": {
+    "calendar": {
+      "ics_url": "",
+      "days_ahead": 7,
+      "max_events": 8
+    },
+    "photos": {
+      "photo_dir": "uploads"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Photo Album Settings{% endblock %}
+{% block content %}
+<h2>Configure: Photo Album</h2>
+<form method="POST" class="settings-form">
+  <label for="photo_dir">Photo Directory</label>
+  <input type="text" id="photo_dir" name="photo_dir"
+         value="{{ settings.photo_dir | default('uploads') }}">
+  <p class="hint">Path to the folder containing your photos. Default: <code>uploads</code></p>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="/" class="btn-secondary">Cancel</a>
+  </div>
+</form>
+
+<hr>
+<h3>Upload Photos</h3>
+<form id="uploadForm" class="upload-form">
+  <input type="file" id="fileInput" accept="image/*" multiple>
+  <button type="submit" class="btn-primary">Upload</button>
+</form>
+<div id="uploadStatus"></div>
+
+<script>
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const files = document.getElementById('fileInput').files;
+  const status = document.getElementById('uploadStatus');
+  status.textContent = 'Uploading...';
+  let ok = 0;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: fd });
+      if (res.ok) ok++;
+    } catch(e) {}
+  }
+  status.textContent = ok + ' of ' + files.length + ' uploaded successfully.';
+  document.getElementById('fileInput').value = '';
+});
+</script>
+{% endblock %}

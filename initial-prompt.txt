@@ -1,0 +1,30 @@
+I have a Raspberry Pi Zero 2 W with connected waveshare eink display. I used to use a deployed app developed from this github...
+
+https://github.com/fatihak/InkyPi
+
+but once I tried to update it it stopped working for me. I would like to develop my own version that would allow me to install much simpler version and potentially make it my own. 
+
+I would like my eink be able to display my calendar and circle photos and being able that I add through Claud Code more modules in the future
+
+Ideally there would be similar UI as I had on InkyPi
+
+
+Specification of the Pi
+===========================
+Raspberry Pi Zero 2 W
+
+
+Specification of the screen
+===========================
+Operating voltage: 3.3 V ~ 5 V.
+Interface: SPI
+Outline dimension: 170.2 mm × 111.2 mm
+Display size: 163.3 mm × 98 mm.
+Dot pitch: 0.205 × 0.204
+Resolution: 800×480
+Display colour: black, white
+Grey scale: 2
+Full refresh time: 5s.
+Refresh power: 38mW (typ.)
+Standby power: <0.017mW.
+Viewing angle: >170°.

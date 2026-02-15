@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+venv/
+waveshare_epd/
+config.json
+static/preview.png
+uploads/*
+!uploads/.gitkeep
+*.log
+.env

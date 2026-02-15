@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Manage Photos{% endblock %}
+{% block content %}
+<h2>Manage Photos</h2>
+
+<form id="uploadForm" class="upload-form" style="margin-bottom: 2rem;">
+  <input type="file" id="fileInput" accept="image/*" multiple>
+  <button type="submit" class="btn-primary">Upload</button>
+  <span id="uploadStatus"></span>
+</form>
+
+{% if photos %}
+<div class="photo-grid">
+  {% for photo in photos %}
+  <div class="photo-card">
+    <div class="photo-name">{{ photo }}</div>
+    <form method="POST" action="/photos/delete/{{ photo }}" style="display:inline;">
+      <button type="submit" class="btn-danger" onclick="return confirm('Delete {{ photo }}?')">Delete</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">No photos uploaded yet. Use the form above to add some.</p>
+{% endif %}
+
+<script>
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const files = document.getElementById('fileInput').files;
+  const status = document.getElementById('uploadStatus');
+  status.textContent = 'Uploading...';
+  let ok = 0;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: fd });
+      if (res.ok) ok++;
+    } catch(e) {}
+  }
+  status.textContent = ok + ' of ' + files.length + ' uploaded.';
+  setTimeout(() => location.reload(), 1000);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Calendar Settings{% endblock %}
+{% block content %}
+<h2>Configure: Calendar</h2>
+<form method="POST" class="settings-form">
+  <label for="ics_url">ICS Calendar URL</label>
+  <input type="url" id="ics_url" name="ics_url"
+         value="{{ settings.ics_url | default('') }}"
+         placeholder="https://calendar.google.com/calendar/ical/...">
+  <p class="hint">
+    The .ics URL from your calendar provider (Google, Outlook, Apple, etc.).<br>
+    In Google Calendar: Settings &gt; Calendar &gt; Secret address in iCal format.
+  </p>
+
+  <label for="days_ahead">Days to look ahead</label>
+  <input type="number" id="days_ahead" name="days_ahead"
+         value="{{ settings.days_ahead | default(7) }}" min="1" max="90">
+
+  <label for="max_events">Maximum events to show</label>
+  <input type="number" id="max_events" name="max_events"
+         value="{{ settings.max_events | default(8) }}" min="1" max="20">
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="/" class="btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}
