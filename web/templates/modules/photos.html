@@ -3,6 +3,12 @@
 {% block content %}
 <h2>Configure: Photo Album</h2>
 <form method="POST" class="settings-form">
+  <label for="display_mode">Display Mode</label>
+  <select id="display_mode" name="display_mode">
+    <option value="fill" {% if settings.display_mode|default('fill') == 'fill' %}selected{% endif %}>Fill (crop to fill screen)</option>
+    <option value="fit" {% if settings.display_mode|default('fill') == 'fit' %}selected{% endif %}>Fit (show full photo, white borders)</option>
+  </select>
+
   <label for="photo_dir">Photo Directory</label>
   <input type="text" id="photo_dir" name="photo_dir"
          value="{{ settings.photo_dir | default('uploads') }}">

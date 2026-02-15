@@ -37,27 +37,29 @@ class PhotosModule(BaseModule):
 
         photo_path = self._shuffled_queue.pop(0)
         logger.info(f"Displaying photo: {photo_path.name} ({len(photos) - len(self._shuffled_queue)}/{len(photos)})")
-        return self._render_photo(width, height, photo_path)
+        mode = settings.get("display_mode", "fill")
+        return self._render_photo(width, height, photo_path, mode)
 
     def default_settings(self) -> dict:
-        return {"photo_dir": "uploads"}
+        return {"photo_dir": "uploads", "display_mode": "fill"}
 
-    def _render_photo(self, width: int, height: int, path: Path) -> Image.Image:
-        """Load, fit to display size, and center on white background."""
+    def _render_photo(self, width: int, height: int, path: Path, mode: str) -> Image.Image:
         try:
             photo = Image.open(path).convert("L")
         except Exception as e:
             raise RuntimeError(f"Failed to open {path.name}: {e}")
 
-        # Fit photo to display while maintaining aspect ratio
-        photo.thumbnail((width, height), Image.LANCZOS)
-
-        # Center on white canvas
-        canvas = Image.new("L", (width, height), 255)
-        x = (width - photo.width) // 2
-        y = (height - photo.height) // 2
-        canvas.paste(photo, (x, y))
-        return canvas
+        if mode == "fill":
+            # Crop to fill the entire screen (no letterboxing)
+            return ImageOps.fit(photo, (width, height), Image.LANCZOS)
+        else:
+            # Fit within screen, letterbox with white
+            photo.thumbnail((width, height), Image.LANCZOS)
+            canvas = Image.new("L", (width, height), 255)
+            x = (width - photo.width) // 2
+            y = (height - photo.height) // 2
+            canvas.paste(photo, (x, y))
+            return canvas
 
     def _no_photos_image(self, width: int, height: int) -> Image.Image:
         img = Image.new("L", (width, height), 255)
