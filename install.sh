@@ -2,7 +2,8 @@
 # EinkPi installer for Raspberry Pi OS (Bookworm)
 set -e
 
-INSTALL_DIR="/home/pi/einkpi"
+CURRENT_USER=$(whoami)
+INSTALL_DIR="$HOME/einkpi"
 REPO_URL="https://github.com/neoblast-cz/eink-custom-build.git"
 
 echo "=== EinkPi Installer ==="
@@ -63,9 +64,29 @@ fi
 # Create uploads directory
 mkdir -p uploads
 
-# 6. Systemd service
+# 6. Systemd service (generate with correct user/paths)
 echo "[6/6] Installing systemd service..."
-sudo cp einkpi.service /etc/systemd/system/
+cat > /tmp/einkpi.service <<SVCEOF
+[Unit]
+Description=EinkPi Display Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$CURRENT_USER
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/venv/bin/python app.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+sudo cp /tmp/einkpi.service /etc/systemd/system/
+rm /tmp/einkpi.service
 sudo systemctl daemon-reload
 sudo systemctl enable einkpi
 sudo systemctl start einkpi
