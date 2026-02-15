@@ -46,14 +46,15 @@ python3 -m venv venv
 ./venv/bin/pip install --quiet -r requirements.txt
 ./venv/bin/pip install --quiet RPi.GPIO spidev gpiozero
 
-# 5. Waveshare EPD drivers
+# 5. Waveshare EPD drivers (download only needed files, not the huge repo)
 echo "[5/6] Installing Waveshare display drivers..."
 if [ ! -d "./waveshare_epd" ]; then
-    git clone --depth 1 \
-        https://github.com/waveshareteam/e-Paper.git /tmp/einkpi-epaper-tmp
-    cp -r /tmp/einkpi-epaper-tmp/RaspberryPi_JetsonNano/python/lib/waveshare_epd \
-           ./waveshare_epd
-    rm -rf /tmp/einkpi-epaper-tmp
+    mkdir -p waveshare_epd
+    WAVESHARE_BASE="https://raw.githubusercontent.com/waveshareteam/e-Paper/master/RaspberryPi_JetsonNano/python/lib/waveshare_epd"
+    curl -sL "$WAVESHARE_BASE/epdconfig.py" -o waveshare_epd/epdconfig.py
+    curl -sL "$WAVESHARE_BASE/epd7in5_V2.py" -o waveshare_epd/epd7in5_V2.py
+    curl -sL "$WAVESHARE_BASE/__init__.py" -o waveshare_epd/__init__.py
+    echo "  Downloaded EPD driver files"
 fi
 
 # Create initial config if missing
