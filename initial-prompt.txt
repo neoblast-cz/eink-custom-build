@@ -28,3 +28,49 @@ Full refresh time: 5s.
 Refresh power: 38mW (typ.)
 Standby power: <0.017mW.
 Viewing angle: >170°.
+
+
+
+Project Structure
+===========================
+eink-custom-build/
+├── app.py                          # Entry point + module registry
+├── config.json / config.example.json
+├── requirements.txt
+├── install.sh                      # Pi one-shot installer
+├── einkpi.service                  # systemd auto-start
+├── .gitignore
+├── core/
+│   ├── config.py                   # JSON config manager
+│   ├── display.py                  # Waveshare EPD + mock fallback
+│   ├── scheduler.py                # Interval-based refresh thread
+│   └── renderer.py                 # Module dispatch → display
+├── modules/
+│   ├── base.py                     # BaseModule (extend this for new modules)
+│   ├── photos/photos.py            # Rotating single photo display
+│   └── calendar_mod/calendar_mod.py # ICS calendar + month grid
+├── web/
+│   ├── routes.py                   # All Flask routes (single file)
+│   └── templates/                  # Dark-themed UI (5 templates)
+├── static/style.css                # InkyPi-inspired dark theme
+└── uploads/                        # Photo storage
+
+
+
+To test locally
+===========================
+You'll need to install Python first (from python.org), then:
+
+
+pip install -r requirements.txt
+python app.py
+# Open http://localhost:8080
+It will run in mock mode (no e-ink hardware) and save preview images to static/preview.png.
+
+To deploy on Pi
+===========================
+# SSH into the Pi, then:
+git clone https://github.com/neoblast-cz/eink-custom-build.git /home/pi/einkpi
+cd /home/pi/einkpi
+bash install.sh
+The web UI will be available at http://<pi-ip>:8080. Upload photos, set an ICS calendar URL, and switch between modules from the dashboard.
