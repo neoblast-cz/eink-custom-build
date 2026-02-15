@@ -33,7 +33,10 @@
           <strong>{{ module.DISPLAY_NAME }}</strong>
           <p>{{ module.DESCRIPTION }}</p>
         </div>
-        <a href="/module/{{ name }}" class="btn-secondary">Configure</a>
+        <div class="module-actions">
+          <button class="btn-preview" onclick="previewModule('{{ name }}')" title="Preview without pushing to display">Preview</button>
+          <a href="/module/{{ name }}" class="btn-secondary">Configure</a>
+        </div>
       </div>
       {% endfor %}
     </div>
@@ -57,6 +60,19 @@ function doRefresh() {
       btn.textContent = 'Refresh Now';
       btn.disabled = false;
     });
+}
+
+function previewModule(name) {
+  fetch('/preview_module/' + name, { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'ok') {
+        document.getElementById('previewImg').src = '/preview?' + Date.now();
+      } else {
+        alert('Preview error: ' + (data.error || 'Unknown'));
+      }
+    })
+    .catch(() => alert('Preview request failed'));
 }
 
 // Auto-refresh preview every 30s

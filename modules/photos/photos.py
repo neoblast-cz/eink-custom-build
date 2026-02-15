@@ -1,4 +1,5 @@
 import logging
+import random
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from modules.base import BaseModule
@@ -11,10 +12,10 @@ PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
 class PhotosModule(BaseModule):
     NAME = "photos"
     DISPLAY_NAME = "Photo Album"
-    DESCRIPTION = "Rotates through your photos, one per refresh"
+    DESCRIPTION = "Rotates through your photos randomly, one per refresh"
 
     def __init__(self):
-        self._current_index = 0
+        self._shuffled_queue = []
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
         photo_dir = Path(settings.get("photo_dir", "uploads"))
@@ -29,12 +30,13 @@ class PhotosModule(BaseModule):
         if not photos:
             return self._no_photos_image(width, height)
 
-        # Wrap index around
-        self._current_index = self._current_index % len(photos)
-        photo_path = photos[self._current_index]
-        self._current_index += 1
+        # Refill queue when empty - shuffle all photos, show each once before repeating
+        if not self._shuffled_queue or not all(p in photos for p in self._shuffled_queue):
+            self._shuffled_queue = list(photos)
+            random.shuffle(self._shuffled_queue)
 
-        logger.info(f"Displaying photo: {photo_path.name}")
+        photo_path = self._shuffled_queue.pop(0)
+        logger.info(f"Displaying photo: {photo_path.name} ({len(photos) - len(self._shuffled_queue)}/{len(photos)})")
         return self._render_photo(width, height, photo_path)
 
     def default_settings(self) -> dict:

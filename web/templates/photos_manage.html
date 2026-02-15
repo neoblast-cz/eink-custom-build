@@ -10,13 +10,16 @@
 </form>
 
 {% if photos %}
-<div class="photo-grid">
+<div class="photo-grid-thumbs">
   {% for photo in photos %}
-  <div class="photo-card">
-    <div class="photo-name">{{ photo }}</div>
-    <form method="POST" action="/photos/delete/{{ photo }}" style="display:inline;">
-      <button type="submit" class="btn-danger" onclick="return confirm('Delete {{ photo }}?')">Delete</button>
-    </form>
+  <div class="photo-card-thumb">
+    <img src="/photos/thumbnail/{{ photo }}" alt="{{ photo }}" class="photo-thumb">
+    <div class="photo-card-footer">
+      <span class="photo-name">{{ photo }}</span>
+      <form method="POST" action="/photos/delete/{{ photo }}" style="display:inline;">
+        <button type="submit" class="btn-danger" onclick="return confirm('Delete {{ photo }}?')">Delete</button>
+      </form>
+    </div>
   </div>
   {% endfor %}
 </div>

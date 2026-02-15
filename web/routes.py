@@ -99,6 +99,44 @@ def create_app(config, module_registry, scheduler):
             return send_file(preview_path, mimetype="image/png")
         return "No preview available", 404
 
+    @app.route("/preview_module/<name>", methods=["POST"])
+    def preview_module(name):
+        """Render a module to preview without pushing to the e-ink display."""
+        from core.renderer import Renderer
+        module = module_registry.get(name)
+        if not module:
+            return jsonify({"error": "Module not found"}), 404
+
+        settings = config.module_settings(name)
+        if not settings:
+            settings = module.default_settings()
+
+        try:
+            image = module.render(config.display_width, config.display_height, settings)
+            preview_path = Path(__file__).parent.parent / "static" / "preview.png"
+            preview_path.parent.mkdir(parents=True, exist_ok=True)
+            image.convert("L").save(preview_path)
+            return jsonify({"status": "ok"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/photos/thumbnail/<filename>")
+    def photo_thumbnail(filename):
+        """Serve a thumbnail of an uploaded photo."""
+        safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)
+        path = UPLOAD_DIR / safe_name
+        if not path.exists():
+            return "Not found", 404
+
+        from PIL import Image as PILImage
+        import io
+        img = PILImage.open(path)
+        img.thumbnail((200, 200))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=70)
+        buf.seek(0)
+        return send_file(buf, mimetype="image/jpeg")
+
     @app.route("/upload", methods=["POST"])
     def upload_photo():
         if "file" not in request.files:
