@@ -147,20 +147,45 @@ class CalendarModule(BaseModule):
         draw.line([(x, y), (x + w, y)], fill=200, width=1)
         y += 8
 
-        # Calendar grid - expand to fill available height
+        # Build calendar grid with neighbor month days filled in
         cal = calendar.monthcalendar(today.year, today.month)
         num_weeks = len(cal)
-        remaining_h = h - (y - 15)  # available height below header
+        remaining_h = h - (y - 15)
         row_h = min(remaining_h // num_weeks, 65)
         cell_h = row_h
 
-        for week in cal:
-            for col_idx, day in enumerate(week):
-                if day == 0:
-                    continue
+        # Figure out previous month's trailing days
+        if today.month == 1:
+            prev_year, prev_month = today.year - 1, 12
+        else:
+            prev_year, prev_month = today.year, today.month - 1
+        prev_month_days = calendar.monthrange(prev_year, prev_month)[1]
 
+        # Figure out next month starting days
+        next_day_counter = 1
+
+        for week_idx, week in enumerate(cal):
+            for col_idx, day in enumerate(week):
                 cx = x + col_idx * cell_w
                 cell_center_x = cx + cell_w // 2
+
+                if day == 0:
+                    # Fill with previous or next month day (greyed out)
+                    if week_idx == 0:
+                        # First week: previous month days
+                        # Count how many zeros before the first real day
+                        first_real = next((i for i, d in enumerate(week) if d != 0), 7)
+                        neighbor_day = prev_month_days - (first_real - 1 - col_idx)
+                    else:
+                        # Last week: next month days
+                        neighbor_day = next_day_counter
+                        next_day_counter += 1
+
+                    text_w = fonts["md"].getlength(str(neighbor_day))
+                    text_x = cx + (cell_w - text_w) // 2
+                    draw.text((text_x, y + 8), str(neighbor_day), fill=200, font=fonts["md"])
+                    continue
+
                 text_w = fonts["md"].getlength(str(day))
                 text_x = cx + (cell_w - text_w) // 2
 
@@ -207,14 +232,28 @@ class CalendarModule(BaseModule):
         text_x = x + indicator_w + 8  # where event text starts
         entry_h = 48
         last_date_key = None
+        last_month_key = None
 
         for event in events:
+            dt = event["start"]
+            month_key = dt.strftime("%Y-%m")
+            date_key = dt.strftime("%Y-%m-%d")
+
+            # Month separator when events cross into a new month
+            if month_key != last_month_key and last_month_key is not None:
+                if y + 20 + entry_h > max_y:
+                    break
+                month_label = dt.strftime("%B")
+                draw.line([(x, y + 5), (x + 8, y + 5)], fill=150, width=1)
+                mlw = fonts["xs"].getlength(month_label)
+                draw.text((x + 12, y - 1), month_label, fill=120, font=fonts["xs"])
+                draw.line([(x + 16 + mlw, y + 5), (max_x, y + 5)], fill=150, width=1)
+                y += 18
+            last_month_key = month_key
+
             if y + entry_h > max_y:
                 draw.text((text_x, y), "...", fill=100, font=fonts["md"])
                 break
-
-            dt = event["start"]
-            date_key = dt.strftime("%Y-%m-%d")
 
             # Draw day circle only for first event of each day
             if date_key != last_date_key:
