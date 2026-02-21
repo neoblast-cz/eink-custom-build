@@ -15,6 +15,7 @@
     "photos": {
       "photo_dir": "uploads"
     },
-    "tasks": {}
+    "tasks": {},
+    "dashboard": {}
   }
 }

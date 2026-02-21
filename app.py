@@ -12,11 +12,13 @@ from web.routes import create_app
 from modules.photos.photos import PhotosModule
 from modules.calendar_mod.calendar_mod import CalendarModule
 from modules.tasks.tasks import TasksModule
+from modules.dashboard.dashboard import DashboardModule
 
 MODULE_REGISTRY = {
     PhotosModule.NAME: PhotosModule(),
     CalendarModule.NAME: CalendarModule(),
     TasksModule.NAME: TasksModule(),
+    DashboardModule.NAME: DashboardModule(),
 }
 # ============================================================
 

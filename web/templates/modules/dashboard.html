@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Dashboard Settings{% endblock %}
+{% block content %}
+<h2>Configure: Dashboard</h2>
+<form method="POST" class="settings-form">
+  <label for="duolingo_username">Duolingo Username</label>
+  <input type="text" id="duolingo_username" name="duolingo_username"
+         value="{{ settings.duolingo_username | default('') }}"
+         placeholder="neoblast">
+  <p class="hint">Your Duolingo username to show your streak. Leave empty to hide.</p>
+
+  <label for="weather_location">Weather Location</label>
+  <input type="text" id="weather_location" name="weather_location"
+         value="{{ settings.weather_location | default('') }}"
+         placeholder="Prague">
+  <p class="hint">City name for weather data (e.g. Prague, London, New+York). Leave empty to hide.</p>
+
+  <label for="message">Custom Message</label>
+  <textarea id="message" name="message" rows="3"
+            placeholder="Have a great day!">{{ settings.message | default('Have a great day!') }}</textarea>
+
+  <label for="message_font">Message Font Size</label>
+  <select id="message_font" name="message_font">
+    <option value="small" {{ 'selected' if settings.message_font == 'small' else '' }}>Small</option>
+    <option value="medium" {{ 'selected' if settings.message_font == 'medium' or not settings.message_font else '' }}>Medium</option>
+    <option value="large" {{ 'selected' if settings.message_font == 'large' else '' }}>Large</option>
+    <option value="extra-large" {{ 'selected' if settings.message_font == 'extra-large' else '' }}>Extra Large</option>
+  </select>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="/" class="btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}
