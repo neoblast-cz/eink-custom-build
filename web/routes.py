@@ -1,6 +1,10 @@
+import os
 import re
 import logging
 from pathlib import Path
+
+# Allow OAuth over HTTP for local/LAN use (no HTTPS on Pi)
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 from flask import (
     Flask, render_template, request, redirect, url_for, jsonify, send_file,
 )
