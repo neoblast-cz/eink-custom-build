@@ -7,24 +7,6 @@
       <img src="/preview" alt="Display preview" class="display-preview" id="previewImg">
     </div>
     <button class="btn-primary" id="refreshBtn" onclick="doRefresh()">Refresh Now</button>
-  </section>
-
-  <section class="module-panel">
-    <h3>Modules</h3>
-    <div class="module-list">
-      {% for name, module in modules.items() %}
-      <div class="module-card" id="card-{{ name }}" data-module="{{ name }}">
-        <div class="module-info">
-          <strong>{{ module.DISPLAY_NAME }}</strong>
-          <p>{{ module.DESCRIPTION }}</p>
-        </div>
-        <div class="module-actions">
-          <button class="btn-preview" onclick="previewModule('{{ name }}')" title="Preview without pushing to display">Preview</button>
-          <a href="/module/{{ name }}" class="btn-secondary">Configure</a>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
 
     <!-- Settings toggle -->
     <div class="settings-toggle" onclick="toggleSettings()">
@@ -65,6 +47,24 @@
           <button type="submit" class="btn-primary">Save Settings</button>
         </div>
       </form>
+    </div>
+  </section>
+
+  <section class="module-panel">
+    <h3>Modules</h3>
+    <div class="module-list">
+      {% for name, module in modules.items() %}
+      <div class="module-card" id="card-{{ name }}" data-module="{{ name }}">
+        <div class="module-info">
+          <strong>{{ module.DISPLAY_NAME }}</strong>
+          <p>{{ module.DESCRIPTION }}</p>
+        </div>
+        <div class="module-actions">
+          <button class="btn-preview" onclick="previewModule('{{ name }}')" title="Preview without pushing to display">Preview</button>
+          <a href="/module/{{ name }}" class="btn-secondary">Configure</a>
+        </div>
+      </div>
+      {% endfor %}
     </div>
   </section>
 </div>
