@@ -76,15 +76,15 @@ class CalendarModule(BaseModule):
             logger.error(f"Calendar fetch failed: {e}")
             return []
 
-    def _get_event_days(self, events: list) -> set:
-        """Get set of day numbers in the current month that have events."""
+    def _get_event_day_counts(self, events: list) -> dict:
+        """Get dict of day number -> event count for the current month."""
         today = datetime.now()
-        days = set()
+        counts = {}
         for event in events:
             dt = event["start"]
             if dt.year == today.year and dt.month == today.month:
-                days.add(dt.day)
-        return days
+                counts[dt.day] = counts.get(dt.day, 0) + 1
+        return counts
 
     def _load_fonts(self):
         font_paths = [
@@ -113,11 +113,11 @@ class CalendarModule(BaseModule):
         draw = ImageDraw.Draw(img)
         fonts = self._load_fonts()
 
-        event_days = self._get_event_days(events)
+        event_day_counts = self._get_event_day_counts(events)
 
         # Layout: left panel uses full height for month grid, right panel for events
         left_w = 300
-        self._draw_month_grid(draw, 15, 15, left_w - 30, height - 30, event_days, fonts)
+        self._draw_month_grid(draw, 15, 15, left_w - 30, height - 30, event_day_counts, fonts)
 
         # Vertical divider
         draw.line([(left_w, 10), (left_w, height - 10)], fill=180, width=1)
@@ -127,7 +127,7 @@ class CalendarModule(BaseModule):
 
         return img
 
-    def _draw_month_grid(self, draw, x, y, w, h, event_days, fonts):
+    def _draw_month_grid(self, draw, x, y, w, h, event_day_counts, fonts):
         today = datetime.now()
 
         # Month/year header
@@ -162,6 +162,7 @@ class CalendarModule(BaseModule):
                 cx = x + col_idx * cell_w
                 cell_center_x = cx + cell_w // 2
                 text_w = fonts["md"].getlength(str(day))
+                text_x = cx + (cell_w - text_w) // 2
 
                 if day == today.day:
                     # Filled circle for today
@@ -170,26 +171,23 @@ class CalendarModule(BaseModule):
                         [cell_center_x - r, y + 4, cell_center_x + r, y + 4 + r * 2],
                         fill=0,
                     )
-                    draw.text(
-                        (cx + (cell_w - text_w) // 2, y + 8),
-                        str(day), fill=255, font=fonts["md"],
-                    )
-                elif day in event_days:
-                    # Outlined circle for days with events
-                    r = 16
-                    draw.ellipse(
-                        [cell_center_x - r, y + 4, cell_center_x + r, y + 4 + r * 2],
-                        outline=0, width=2,
-                    )
-                    draw.text(
-                        (cx + (cell_w - text_w) // 2, y + 8),
-                        str(day), fill=0, font=fonts["md"],
-                    )
+                    draw.text((text_x, y + 8), str(day), fill=255, font=fonts["md"])
                 else:
-                    draw.text(
-                        (cx + (cell_w - text_w) // 2, y + 8),
-                        str(day), fill=0, font=fonts["md"],
-                    )
+                    draw.text((text_x, y + 8), str(day), fill=0, font=fonts["md"])
+
+                # Event indicator dots below the day number
+                num_events = event_day_counts.get(day, 0)
+                if num_events > 0:
+                    dot_count = min(num_events, 3)
+                    dot_r = 2
+                    dot_spacing = 7
+                    dot_y = y + 28
+                    total_w = dot_count * (dot_r * 2) + (dot_count - 1) * (dot_spacing - dot_r * 2)
+                    dot_start_x = cell_center_x - total_w // 2
+                    for di in range(dot_count):
+                        dx = dot_start_x + di * dot_spacing
+                        fill = 255 if day == today.day else 0
+                        draw.ellipse([dx, dot_y, dx + dot_r * 2, dot_y + dot_r * 2], fill=fill)
 
             y += cell_h
 
@@ -204,25 +202,54 @@ class CalendarModule(BaseModule):
             draw.text((x, y + 24), ics_hint, fill=160, font=fonts["sm"])
             return
 
-        entry_h = 54
+        # Group events by date key for day indicator logic
+        indicator_w = 32  # space reserved for the day circle on the left
+        text_x = x + indicator_w + 8  # where event text starts
+        entry_h = 48
+        last_date_key = None
+
         for event in events:
             if y + entry_h > max_y:
-                draw.text((x, y), "...", fill=100, font=fonts["md"])
+                draw.text((text_x, y), "...", fill=100, font=fonts["md"])
                 break
 
-            title = event["summary"]
-            max_chars = int((max_x - x) / 8)
-            if len(title) > max_chars:
-                title = title[: max_chars - 3] + "..."
-            draw.text((x, y), title, fill=0, font=fonts["md"])
-
             dt = event["start"]
+            date_key = dt.strftime("%Y-%m-%d")
+
+            # Draw day circle only for first event of each day
+            if date_key != last_date_key:
+                day_str = str(dt.day)
+                day_w = fonts["sm"].getlength(day_str)
+                circle_r = 14
+                circle_cx = x + indicator_w // 2
+                circle_cy = y + 10
+                draw.ellipse(
+                    [circle_cx - circle_r, circle_cy - circle_r,
+                     circle_cx + circle_r, circle_cy + circle_r],
+                    outline=0, width=2,
+                )
+                draw.text(
+                    (circle_cx - day_w // 2, circle_cy - 7),
+                    day_str, fill=0, font=fonts["sm"],
+                )
+                last_date_key = date_key
+
+            # Event title
+            title = event["summary"]
+            max_title_w = max_x - text_x
+            if fonts["md"].getlength(title) > max_title_w:
+                while fonts["md"].getlength(title + "...") > max_title_w and len(title) > 0:
+                    title = title[:-1]
+                title += "..."
+            draw.text((text_x, y), title, fill=0, font=fonts["md"])
+
+            # Time label
             if event["all_day"]:
-                label = dt.strftime("%a, %b %d  (all day)")
+                label = "All day"
             else:
-                label = dt.strftime("%a, %b %d  %H:%M")
-            draw.text((x, y + 22), label, fill=100, font=fonts["sm"])
+                label = dt.strftime("%H:%M")
+            draw.text((text_x, y + 20), label, fill=100, font=fonts["sm"])
 
             y += entry_h - 8
-            draw.line([(x, y), (max_x, y)], fill=220, width=1)
+            draw.line([(text_x, y), (max_x, y)], fill=220, width=1)
             y += 8
