@@ -10,25 +10,10 @@
   </section>
 
   <section class="module-panel">
-    <div class="status-bar">
-      {% if rotation|length > 1 %}
-      <span class="status-label">Rotation:</span>
-      <span class="status-value">
-        {% for entry in rotation %}{{ modules[entry.module].DISPLAY_NAME if entry.module in modules else entry.module }} ({{ entry.duration_minutes }}m){% if not loop.last %} → {% endif %}{% endfor %}
-      </span>
-      {% else %}
-      <span class="status-label">Active:</span>
-      <span class="status-value">{{ modules[active_module].DISPLAY_NAME if active_module in modules else 'None' }}</span>
-      <span class="status-sep">|</span>
-      <span class="status-label">Interval:</span>
-      <span class="status-value">{{ refresh_minutes }} min</span>
-      {% endif %}
-    </div>
-
     <h3>Modules</h3>
     <div class="module-list">
       {% for name, module in modules.items() %}
-      <div class="module-card {% if name == active_module %}active{% endif %}">
+      <div class="module-card" id="card-{{ name }}" data-module="{{ name }}">
         <div class="module-info">
           <strong>{{ module.DISPLAY_NAME }}</strong>
           <p>{{ module.DESCRIPTION }}</p>
@@ -40,39 +25,137 @@
       </div>
       {% endfor %}
     </div>
+
+    <!-- Settings toggle -->
+    <div class="settings-toggle" onclick="toggleSettings()">
+      <span id="settingsArrow">&#9654;</span> Settings
+    </div>
+    <div id="settingsPanel" class="settings-collapsible" style="display: none;">
+      <form method="POST" action="/settings" class="settings-form">
+        <h3>Module Rotation</h3>
+        <p class="hint">Add modules to rotate between them. Each module displays for its own duration before switching.</p>
+
+        <div id="rotationList">
+          {% for entry in rotation %}
+          <div class="rotation-entry">
+            <select name="rotation_module">
+              {% for name, module in modules.items() %}
+              <option value="{{ name }}" {% if name == entry.module %}selected{% endif %}>
+                {{ module.DISPLAY_NAME }}
+              </option>
+              {% endfor %}
+            </select>
+            <input type="number" name="rotation_duration" value="{{ entry.duration_minutes }}" min="1" max="1440" style="width: 80px;">
+            <span class="hint" style="margin: 0;">min</span>
+            <button type="button" class="btn-danger" onclick="this.parentElement.remove()">Remove</button>
+          </div>
+          {% endfor %}
+        </div>
+
+        <button type="button" class="btn-secondary" onclick="addRotationEntry()" style="margin-top: 0.5rem;">+ Add Module</button>
+
+        <hr>
+
+        <label for="refresh_minutes">Fallback Refresh Interval (minutes)</label>
+        <input type="number" id="refresh_minutes" name="refresh_minutes"
+               value="{{ config.refresh_minutes }}" min="1" max="1440">
+        <p class="hint">Used when only one module is in rotation (no cycling).</p>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Save Settings</button>
+        </div>
+      </form>
+    </div>
   </section>
 </div>
 
+<template id="rotationTemplate">
+  <div class="rotation-entry">
+    <select name="rotation_module">
+      {% for name, module in modules.items() %}
+      <option value="{{ name }}">{{ module.DISPLAY_NAME }}</option>
+      {% endfor %}
+    </select>
+    <input type="number" name="rotation_duration" value="5" min="1" max="1440" style="width: 80px;">
+    <span class="hint" style="margin: 0;">min</span>
+    <button type="button" class="btn-danger" onclick="this.parentElement.remove()">Remove</button>
+  </div>
+</template>
+
 <script>
-function doRefresh() {
-  const btn = document.getElementById('refreshBtn');
-  btn.textContent = 'Refreshing...';
-  btn.disabled = true;
-  fetch('/refresh', { method: 'POST' })
-    .then(() => {
-      setTimeout(() => {
-        document.getElementById('previewImg').src = '/preview?' + Date.now();
-        btn.textContent = 'Refresh Now';
-        btn.disabled = false;
-      }, 2000);
-    })
-    .catch(() => {
-      btn.textContent = 'Refresh Now';
-      btn.disabled = false;
-    });
-}
+let currentModule = null;
 
 function previewModule(name) {
+  const btn = event.target;
+  btn.textContent = '...';
   fetch('/preview_module/' + name, { method: 'POST' })
     .then(res => res.json())
     .then(data => {
+      btn.textContent = 'Preview';
       if (data.status === 'ok') {
         document.getElementById('previewImg').src = '/preview?' + Date.now();
+        currentModule = name;
+        updateActiveCard();
       } else {
         alert('Preview error: ' + (data.error || 'Unknown'));
       }
     })
-    .catch(() => alert('Preview request failed'));
+    .catch(() => { btn.textContent = 'Preview'; alert('Preview request failed'); });
+}
+
+function doRefresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn.textContent = 'Refreshing...';
+  btn.disabled = true;
+
+  if (currentModule) {
+    // Refresh the currently previewed module
+    fetch('/preview_module/' + currentModule, { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        setTimeout(() => {
+          document.getElementById('previewImg').src = '/preview?' + Date.now();
+          btn.textContent = 'Refresh Now';
+          btn.disabled = false;
+        }, 500);
+      })
+      .catch(() => { btn.textContent = 'Refresh Now'; btn.disabled = false; });
+  } else {
+    // No module previewed yet, trigger scheduler refresh
+    fetch('/refresh', { method: 'POST' })
+      .then(() => {
+        setTimeout(() => {
+          document.getElementById('previewImg').src = '/preview?' + Date.now();
+          btn.textContent = 'Refresh Now';
+          btn.disabled = false;
+        }, 2000);
+      })
+      .catch(() => { btn.textContent = 'Refresh Now'; btn.disabled = false; });
+  }
+}
+
+function updateActiveCard() {
+  document.querySelectorAll('.module-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.module === currentModule);
+  });
+}
+
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const arrow = document.getElementById('settingsArrow');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    arrow.innerHTML = '&#9660;';
+  } else {
+    panel.style.display = 'none';
+    arrow.innerHTML = '&#9654;';
+  }
+}
+
+function addRotationEntry() {
+  const tmpl = document.getElementById('rotationTemplate');
+  const clone = tmpl.content.cloneNode(true);
+  document.getElementById('rotationList').appendChild(clone);
 }
 
 // Auto-refresh preview every 30s

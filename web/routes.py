@@ -24,12 +24,17 @@ def create_app(config, module_registry, scheduler):
 
     @app.route("/")
     def index():
+        rotation = config.rotation
+        if not rotation:
+            rotation = [{"module": config.active_module, "duration_minutes": config.refresh_minutes}]
+
         return render_template(
             "index.html",
             active_module=config.active_module,
             modules=module_registry,
             refresh_minutes=config.refresh_minutes,
-            rotation=config.rotation,
+            rotation=rotation,
+            config=config,
         )
 
     @app.route("/settings", methods=["GET", "POST"])
@@ -58,14 +63,8 @@ def create_app(config, module_registry, scheduler):
             config.save()
             return redirect(url_for("index"))
 
-        rotation = config.rotation
-        if not rotation:
-            # Default: show current active module
-            rotation = [{"module": config.active_module, "duration_minutes": config.refresh_minutes}]
-
-        return render_template(
-            "settings.html", config=config, modules=module_registry, rotation=rotation
-        )
+        # Settings are now inline on the dashboard
+        return redirect(url_for("index"))
 
     @app.route("/module/<name>", methods=["GET", "POST"])
     def module_config(name):

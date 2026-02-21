@@ -381,3 +381,32 @@ input[type="file"] {
   white-space: nowrap;
   flex: 1;
 }
+
+/* Settings toggle */
+.settings-toggle {
+  margin-top: 1.5rem;
+  padding: 0.8rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.2s;
+  user-select: none;
+}
+
+.settings-toggle:hover { color: var(--text); }
+
+.settings-collapsible {
+  margin-top: 0.5rem;
+  padding: 1rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.settings-collapsible .settings-form {
+  max-width: 100%;
+}
