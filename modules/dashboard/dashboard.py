@@ -81,7 +81,7 @@ class DashboardModule(BaseModule):
             "/System/Library/Fonts/Helvetica.ttc",
         ]
         fonts = {}
-        sizes = [("xl", 40), ("lg", 30), ("md", 22), ("sm", 16), ("xs", 13)]
+        sizes = [("xxl", 56), ("xl", 40), ("lg", 30), ("md", 22), ("sm", 16), ("xs", 13)]
         for size_name, size in sizes:
             loaded = False
             for path in font_paths:
@@ -238,7 +238,10 @@ class DashboardModule(BaseModule):
             current = data["current_condition"][0]
             return {
                 "temp_c": current["temp_C"],
+                "feels_like": current.get("FeelsLikeC", ""),
+                "humidity": current.get("humidity", ""),
                 "condition": current["weatherDesc"][0]["value"],
+                "weather_code": int(current.get("weatherCode", 0)),
                 "location": location,
             }
         except Exception as e:
@@ -278,11 +281,80 @@ class DashboardModule(BaseModule):
             logger.error(f"AQI fetch failed: {e}")
             return {}
 
+    def _draw_weather_icon(self, draw, cx, cy, code, size=40):
+        """Draw a simple weather icon based on wttr.in weather code."""
+        r = size // 2
+
+        # Classify weather code into icon type
+        # wttr.in codes: 113=sunny, 116=partly cloudy, 119/122=cloudy/overcast,
+        # 176/263/266/293/296/299/302/305/308=rain variants,
+        # 179/227/230/323/326/329/332/335/338=snow, 200/386/389=thunder
+        if code == 113:
+            # Sun: circle with rays
+            draw.ellipse([cx - r // 2, cy - r // 2, cx + r // 2, cy + r // 2],
+                          outline=0, width=2)
+            for angle in range(0, 360, 45):
+                rad = math.radians(angle)
+                inner = r // 2 + 4
+                outer = r - 2
+                draw.line([(cx + inner * math.cos(rad), cy + inner * math.sin(rad)),
+                           (cx + outer * math.cos(rad), cy + outer * math.sin(rad))],
+                          fill=0, width=2)
+        elif code in (116, 119):
+            # Partly cloudy / cloudy: cloud shape
+            draw.ellipse([cx - r, cy - 4, cx - r + 20, cy + 12], outline=0, width=2)
+            draw.ellipse([cx - 8, cy - 14, cx + 14, cy + 8], outline=0, width=2)
+            draw.ellipse([cx + 2, cy - 6, cx + r, cy + 14], outline=0, width=2)
+            draw.line([(cx - r + 2, cy + 12), (cx + r - 2, cy + 12)], fill=0, width=2)
+        elif code == 122:
+            # Overcast: filled cloud
+            draw.ellipse([cx - r, cy - 4, cx - r + 20, cy + 12], fill=160, outline=120, width=1)
+            draw.ellipse([cx - 8, cy - 14, cx + 14, cy + 8], fill=160, outline=120, width=1)
+            draw.ellipse([cx + 2, cy - 6, cx + r, cy + 14], fill=160, outline=120, width=1)
+            draw.rectangle([cx - r + 10, cy, cx + r - 10, cy + 12], fill=160)
+        elif code in (176, 263, 266, 293, 296, 299, 302, 305, 308):
+            # Rain: cloud + droplets
+            draw.ellipse([cx - 14, cy - 14, cx + 2, cy - 2], fill=180, outline=120, width=1)
+            draw.ellipse([cx - 4, cy - 20, cx + 14, cy - 2], fill=180, outline=120, width=1)
+            draw.rectangle([cx - 12, cy - 6, cx + 12, cy - 2], fill=180)
+            # Raindrops
+            for dx in [-8, 0, 8]:
+                drop_x = cx + dx
+                draw.line([(drop_x, cy + 4), (drop_x - 2, cy + 12)], fill=80, width=2)
+                draw.line([(drop_x + 4, cy + 8), (drop_x + 2, cy + 16)], fill=80, width=2)
+        elif code in (179, 227, 230, 323, 326, 329, 332, 335, 338):
+            # Snow: cloud + snowflakes
+            draw.ellipse([cx - 14, cy - 14, cx + 2, cy - 2], fill=200, outline=140, width=1)
+            draw.ellipse([cx - 4, cy - 20, cx + 14, cy - 2], fill=200, outline=140, width=1)
+            draw.rectangle([cx - 12, cy - 6, cx + 12, cy - 2], fill=200)
+            # Snowflakes (small asterisks)
+            for dx, dy in [(-8, 8), (2, 14), (10, 6)]:
+                sx, sy = cx + dx, cy + dy
+                for angle in [0, 60, 120]:
+                    rad = math.radians(angle)
+                    draw.line([(sx - 3 * math.cos(rad), sy - 3 * math.sin(rad)),
+                               (sx + 3 * math.cos(rad), sy + 3 * math.sin(rad))], fill=60, width=1)
+        elif code in (200, 386, 389, 392, 395):
+            # Thunder: cloud + lightning bolt
+            draw.ellipse([cx - 14, cy - 16, cx + 2, cy - 4], fill=140, outline=80, width=1)
+            draw.ellipse([cx - 4, cy - 22, cx + 14, cy - 4], fill=140, outline=80, width=1)
+            draw.rectangle([cx - 12, cy - 8, cx + 12, cy - 4], fill=140)
+            # Lightning bolt
+            draw.polygon([(cx - 2, cy), (cx + 4, cy + 8), (cx + 1, cy + 8),
+                          (cx + 4, cy + 18), (cx - 4, cy + 8), (cx - 1, cy + 8)], fill=0)
+        else:
+            # Default: simple cloud
+            draw.ellipse([cx - r, cy - 4, cx - r + 20, cy + 12], outline=100, width=2)
+            draw.ellipse([cx - 8, cy - 14, cx + 14, cy + 8], outline=100, width=2)
+            draw.ellipse([cx + 2, cy - 6, cx + r, cy + 14], outline=100, width=2)
+            draw.line([(cx - r + 2, cy + 12), (cx + r - 2, cy + 12)], fill=100, width=2)
+
     def _draw_weather_aqi(self, draw, x1, y1, x2, y2, weather, aqi, fonts):
         cx = (x1 + x2) // 2
-        cy = (y1 + y2) // 2
+        pad = 15
 
         if not weather and not aqi:
+            cy = (y1 + y2) // 2
             draw.text((cx - fonts["md"].getlength("Weather") // 2, cy - 15),
                        "Weather", fill=120, font=fonts["md"])
             msg = "Set location & coordinates"
@@ -290,49 +362,65 @@ class DashboardModule(BaseModule):
                        msg, fill=160, font=fonts["sm"])
             return
 
-        # Split: temperature on the left third, AQI circle on the right third
-        section_w = x2 - x1
-        temp_cx = x1 + section_w // 3
-        aqi_cx = x1 + (section_w * 2) // 3
+        y = y1 + pad
 
-        # Temperature
         if weather:
-            temp_str = f"{weather['temp_c']}°C"
-            tw = fonts["xl"].getlength(temp_str)
-            draw.text((temp_cx - tw // 2, cy - 35), temp_str, fill=0, font=fonts["xl"])
+            # Weather icon on the left, temperature on the right
+            icon_cx = x1 + 60
+            icon_cy = y + 35
+            self._draw_weather_icon(draw, icon_cx, icon_cy, weather.get("weather_code", 0), size=50)
 
+            # Big temperature next to icon
+            temp_str = f"{weather['temp_c']}°"
+            temp_x = x1 + 110
+            draw.text((temp_x, y + 2), temp_str, fill=0, font=fonts["xxl"])
+
+            # Condition text below
             condition = weather["condition"]
-            cw = fonts["sm"].getlength(condition)
-            draw.text((temp_cx - cw // 2, cy + 15), condition, fill=80, font=fonts["sm"])
+            cw = fonts["md"].getlength(condition)
+            draw.text((cx - cw // 2, y + 68), condition, fill=60, font=fonts["md"])
 
-            loc = weather["location"].title()
-            lw = fonts["xs"].getlength(loc)
-            draw.text((temp_cx - lw // 2, cy + 38), loc, fill=140, font=fonts["xs"])
+            # Details row: feels like + humidity
+            details = []
+            if weather.get("feels_like"):
+                details.append(f"Feels {weather['feels_like']}°")
+            if weather.get("humidity"):
+                details.append(f"Humidity {weather['humidity']}%")
+            detail_str = "  |  ".join(details)
+            if detail_str:
+                dw = fonts["xs"].getlength(detail_str)
+                draw.text((cx - dw // 2, y + 96), detail_str, fill=120, font=fonts["xs"])
 
-        # AQI circle
+        # AQI bar at the bottom
         if aqi:
-            r = 40
-            shade = aqi["shade"]
-            # Draw filled circle
-            draw.ellipse(
-                [aqi_cx - r, cy - r - 5, aqi_cx + r, cy + r - 5],
-                fill=shade, outline=0, width=2,
-            )
-            # AQI value in center
-            val_str = str(aqi["value"])
-            text_fill = 0 if shade > 120 else 255
-            vw = fonts["lg"].getlength(val_str)
-            draw.text((aqi_cx - vw // 2, cy - 22), val_str, fill=text_fill, font=fonts["lg"])
+            bar_y = y2 - pad - 30
+            bar_x = x1 + pad + 5
+            bar_w = (x2 - x1) - pad * 2 - 10
+            bar_h = 10
 
-            # Label below circle
-            label = aqi["label"]
-            llw = fonts["sm"].getlength(label)
-            draw.text((aqi_cx - llw // 2, cy + r + 2), label, fill=80, font=fonts["sm"])
+            # AQI scale bar (gradient from light to dark)
+            segment_w = bar_w // 5
+            fills = [220, 190, 150, 110, 70]
+            for i, fill_val in enumerate(fills):
+                sx = bar_x + i * segment_w
+                sw = segment_w if i < 4 else bar_w - 4 * segment_w
+                draw.rectangle([sx, bar_y, sx + sw, bar_y + bar_h], fill=fill_val)
 
-            # "AQI" tiny label above circle
-            aq_label = "AQI"
-            aw = fonts["xs"].getlength(aq_label)
-            draw.text((aqi_cx - aw // 2, cy - r - 20), aq_label, fill=120, font=fonts["xs"])
+            # Outer border
+            draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], outline=80, width=1)
+
+            # Position marker on the bar
+            max_aqi = 100
+            aqi_val = min(aqi["value"], max_aqi)
+            marker_x = bar_x + int(aqi_val / max_aqi * bar_w)
+            # Triangle marker above bar
+            draw.polygon([(marker_x - 5, bar_y - 2), (marker_x + 5, bar_y - 2),
+                          (marker_x, bar_y + 3)], fill=0)
+
+            # AQI label
+            aqi_text = f"AQI {aqi['value']} - {aqi['label']}"
+            aw = fonts["xs"].getlength(aqi_text)
+            draw.text((cx - aw // 2, bar_y + bar_h + 4), aqi_text, fill=80, font=fonts["xs"])
 
     # ── Precipitation Radar (bottom-right) ───────────────────────────
 
