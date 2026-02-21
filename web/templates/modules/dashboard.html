@@ -15,11 +15,8 @@
          placeholder="Prague">
   <p class="hint">City name for weather data (e.g. Prague, London, New+York). Leave empty to hide.</p>
 
-  <label for="message">Custom Message</label>
-  <textarea id="message" name="message" rows="3"
-            placeholder="Have a great day!">{{ settings.message | default('Have a great day!') }}</textarea>
-
-  <label for="message_font">Message Font Size</label>
+  <label for="message_font">Affirmation Font Size</label>
+  <p class="hint">A random daily affirmation is shown in the bottom-left quadrant.</p>
   <select id="message_font" name="message_font">
     <option value="small" {{ 'selected' if settings.message_font == 'small' else '' }}>Small</option>
     <option value="medium" {{ 'selected' if settings.message_font == 'medium' or not settings.message_font else '' }}>Medium</option>

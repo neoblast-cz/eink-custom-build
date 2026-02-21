@@ -16,7 +16,7 @@ MESSAGE_FONT_SIZES = {
 class DashboardModule(BaseModule):
     NAME = "dashboard"
     DISPLAY_NAME = "Dashboard"
-    DESCRIPTION = "Shows time, Duolingo streak, weather, and a custom message"
+    DESCRIPTION = "Shows time, Duolingo streak, weather, and a daily affirmation"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
         img = Image.new("L", (width, height), 255)
@@ -37,10 +37,10 @@ class DashboardModule(BaseModule):
         streak = self._fetch_duolingo_streak(settings.get("duolingo_username", ""))
         self._draw_duolingo(draw, mid_x, 0, width, mid_y, streak, fonts)
 
-        # Bottom-left: Custom message
-        message = settings.get("message", "Have a great day!")
+        # Bottom-left: Daily affirmation
+        affirmation = self._fetch_affirmation()
         font_size_name = settings.get("message_font", "medium")
-        self._draw_message(draw, 0, mid_y, mid_x, height, message, font_size_name, fonts)
+        self._draw_message(draw, 0, mid_y, mid_x, height, affirmation, font_size_name, fonts)
 
         # Bottom-right: Weather
         weather = self._fetch_weather(settings.get("weather_location", ""))
@@ -52,7 +52,6 @@ class DashboardModule(BaseModule):
         return {
             "duolingo_username": "neoblast",
             "weather_location": "",
-            "message": "Have a great day!",
             "message_font": "medium",
         }
 
@@ -168,6 +167,16 @@ class DashboardModule(BaseModule):
         except Exception as e:
             logger.error(f"Weather fetch failed: {e}")
             return {}
+
+    def _fetch_affirmation(self) -> str:
+        try:
+            import requests
+            resp = requests.get("https://www.affirmations.dev", timeout=10)
+            resp.raise_for_status()
+            return resp.json().get("affirmation", "You are doing great!")
+        except Exception as e:
+            logger.error(f"Affirmation fetch failed: {e}")
+            return "You are doing great!"
 
     def _draw_weather(self, draw, x1, y1, x2, y2, weather, fonts):
         cx = (x1 + x2) // 2
