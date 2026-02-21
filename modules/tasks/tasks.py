@@ -76,6 +76,10 @@ class TasksModule(BaseModule):
             items = results.get("items", [])
             tasks = []
             for item in items:
+                title = item.get("title", "").strip()
+                if not title:
+                    continue  # skip blank tasks
+
                 due = None
                 if item.get("due"):
                     try:
@@ -84,14 +88,15 @@ class TasksModule(BaseModule):
                         pass
 
                 tasks.append({
-                    "title": item.get("title", ""),
+                    "title": title,
                     "status": item.get("status", "needsAction"),
                     "due": due,
                 })
 
-            # Sort: incomplete first, then by due date
+            # Sort: incomplete first, then dated before dateless, then by due date
             tasks.sort(key=lambda t: (
                 0 if t["status"] == "needsAction" else 1,
+                0 if t["due"] else 1,
                 t["due"] or datetime.max,
             ))
             return tasks
@@ -180,11 +185,11 @@ class TasksModule(BaseModule):
                 title += "..."
             draw.text((text_x, y - 1), title, fill=0, font=fonts["md"])
 
-            # Due date
+            # Due date (or "No date" for dateless tasks)
             if task["due"]:
                 due_str = f"Due: {task['due'].strftime('%a %d')}"
-                due_w = fonts["sm"].getlength(due_str)
-                draw.text((width - margin - due_w, y + 1), due_str, fill=100, font=fonts["sm"])
+                draw.text((width - margin - fonts["sm"].getlength(due_str), y + 1),
+                           due_str, fill=100, font=fonts["sm"])
 
             y += row_h
 
