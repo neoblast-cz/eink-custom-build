@@ -3,26 +3,55 @@
 {% block content %}
 <h2>Configure: Dashboard</h2>
 <form method="POST" class="settings-form">
-  <label for="duolingo_username">Duolingo Username</label>
-  <input type="text" id="duolingo_username" name="duolingo_username"
-         value="{{ settings.duolingo_username | default('') }}"
-         placeholder="neoblast">
-  <p class="hint">Your Duolingo username to show your streak. Leave empty to hide.</p>
-
-  <label for="weather_location">Weather Location</label>
-  <input type="text" id="weather_location" name="weather_location"
-         value="{{ settings.weather_location | default('') }}"
-         placeholder="Prague">
-  <p class="hint">City name for weather data (e.g. Prague, London, New+York). Leave empty to hide.</p>
-
   <label for="message_font">Affirmation Font Size</label>
-  <p class="hint">A random daily affirmation is shown in the bottom-left quadrant.</p>
+  <p class="hint">A random daily affirmation is shown in the top-left quadrant.</p>
   <select id="message_font" name="message_font">
     <option value="small" {{ 'selected' if settings.message_font == 'small' else '' }}>Small</option>
     <option value="medium" {{ 'selected' if settings.message_font == 'medium' or not settings.message_font else '' }}>Medium</option>
     <option value="large" {{ 'selected' if settings.message_font == 'large' else '' }}>Large</option>
     <option value="extra-large" {{ 'selected' if settings.message_font == 'extra-large' else '' }}>Extra Large</option>
   </select>
+
+  <hr>
+  <h3>Traffic (Top-Right)</h3>
+
+  <label for="google_maps_api_key">Google Maps API Key</label>
+  <input type="text" id="google_maps_api_key" name="google_maps_api_key"
+         value="{{ settings.google_maps_api_key | default('') }}"
+         placeholder="AIza...">
+  <p class="hint">Get a free key at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>. Enable the Directions API.</p>
+
+  <label for="home_address">Home Address</label>
+  <input type="text" id="home_address" name="home_address"
+         value="{{ settings.home_address | default('') }}"
+         placeholder="123 Main St, Prague">
+  <p class="hint">Your home address for morning commute (before 14:00).</p>
+
+  <label for="office_address">Office Address</label>
+  <input type="text" id="office_address" name="office_address"
+         value="{{ settings.office_address | default('') }}"
+         placeholder="456 Office Blvd, Prague">
+  <p class="hint">Your office address. Afternoon commute (after 14:00) shows office to home.</p>
+
+  <hr>
+  <h3>Weather, AQI &amp; Radar (Bottom Half)</h3>
+
+  <label for="weather_location">Weather Location</label>
+  <input type="text" id="weather_location" name="weather_location"
+         value="{{ settings.weather_location | default('') }}"
+         placeholder="Prague">
+  <p class="hint">City name for current temperature (e.g. Prague, London, New+York).</p>
+
+  <label for="latitude">Latitude</label>
+  <input type="text" id="latitude" name="latitude"
+         value="{{ settings.latitude | default('') }}"
+         placeholder="50.0755">
+  <p class="hint">Used for AQI and precipitation radar. Find at <a href="https://www.latlong.net/" target="_blank">latlong.net</a>.</p>
+
+  <label for="longitude">Longitude</label>
+  <input type="text" id="longitude" name="longitude"
+         value="{{ settings.longitude | default('') }}"
+         placeholder="14.4378">
 
   <div class="form-actions">
     <button type="submit" class="btn-primary">Save</button>
