@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Tasks Settings{% endblock %}
+{% block content %}
+<h2>Configure: Tasks</h2>
+
+<div class="settings-form">
+  <h3>Google Cloud Setup</h3>
+  <p class="hint">
+    To connect Google Tasks, you need a Google Cloud project:
+  </p>
+  <ol class="hint">
+    <li>Go to <a href="https://console.cloud.google.com/apis/library/tasks.googleapis.com" target="_blank">Google Cloud Console</a> and enable the Tasks API</li>
+    <li>Go to <strong>Credentials</strong> &gt; <strong>Create Credentials</strong> &gt; <strong>OAuth 2.0 Client ID</strong></li>
+    <li>Application type: <strong>Web application</strong></li>
+    <li>Add authorized redirect URI: <code>http://{{ request.host }}/oauth/google/callback</code></li>
+    <li>Copy the Client ID and Client Secret below</li>
+  </ol>
+
+  <form method="POST">
+    <label for="client_id">Client ID</label>
+    <input type="text" id="client_id" name="client_id"
+           value="{{ settings.client_id | default('') }}"
+           placeholder="xxxx.apps.googleusercontent.com">
+
+    <label for="client_secret">Client Secret</label>
+    <input type="password" id="client_secret" name="client_secret"
+           value="{{ settings.client_secret | default('') }}"
+           placeholder="GOCSPX-...">
+
+    <label for="max_tasks">Maximum tasks to show</label>
+    <input type="number" id="max_tasks" name="max_tasks"
+           value="{{ settings.max_tasks | default(15) }}" min="1" max="50">
+
+    <label>
+      <input type="checkbox" name="show_completed"
+             {{ 'checked' if settings.show_completed in ['on', 'true', '1', true] else '' }}>
+      Show completed tasks
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Save Settings</button>
+      <a href="/" class="btn-secondary">Cancel</a>
+    </div>
+  </form>
+
+  {% if settings.client_id and settings.client_secret %}
+  <hr style="border-color: #444; margin: 1.5rem 0;">
+
+  <h3>Authorization</h3>
+  {% if authorized %}
+    <p style="color: #6f6;">Authorized with Google Tasks</p>
+    <a href="/oauth/google/start" class="btn-secondary">Re-authorize</a>
+  {% else %}
+    <p class="hint">Click below to sign in with your Google account and allow access to Tasks.</p>
+    <a href="/oauth/google/start" class="btn-primary">Authorize with Google</a>
+  {% endif %}
+
+  {% if authorized %}
+  <hr style="border-color: #444; margin: 1.5rem 0;">
+
+  <h3>Task List</h3>
+  <p class="hint">Select which task list to display. Loading lists...</p>
+  <select id="list-select" style="width:100%; padding:8px; margin-top:8px; background:#333; color:#eee; border:1px solid #555; border-radius:4px;">
+    <option value="@default">My Tasks (default)</option>
+  </select>
+  <p id="list-status" class="hint"></p>
+
+  <script>
+    (function() {
+      var select = document.getElementById('list-select');
+      var status = document.getElementById('list-status');
+      var current = '{{ settings.list_id | default("@default") }}';
+
+      fetch('/tasks/lists')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.error) {
+            status.textContent = 'Error: ' + data.error;
+            return;
+          }
+          select.innerHTML = '';
+          data.lists.forEach(function(list) {
+            var opt = document.createElement('option');
+            opt.value = list.id;
+            opt.textContent = list.title;
+            if (list.id === current) opt.selected = true;
+            select.appendChild(opt);
+          });
+          status.textContent = 'Loaded ' + data.lists.length + ' list(s). Select one and save below.';
+        })
+        .catch(function(e) {
+          status.textContent = 'Failed to load lists.';
+        });
+
+      select.addEventListener('change', function() {
+        fetch('/module/tasks', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'client_id={{ settings.client_id }}&client_secret={{ settings.client_secret }}&max_tasks={{ settings.max_tasks | default(15) }}&list_id=' + encodeURIComponent(select.value)
+        }).then(function() {
+          status.textContent = 'Task list saved!';
+        });
+      });
+    })();
+  </script>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

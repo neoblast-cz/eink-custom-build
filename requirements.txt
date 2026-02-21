@@ -3,3 +3,5 @@ Pillow>=10.0
 icalendar>=5.0
 requests>=2.31
 python-dateutil>=2.8
+google-auth-oauthlib>=1.0
+google-api-python-client>=2.80

@@ -8,3 +8,4 @@ uploads/*
 !uploads/.gitkeep
 *.log
 .env
+google_token.json
