@@ -148,6 +148,8 @@ def create_app(config, module_registry, scheduler):
         if not settings:
             settings = module.default_settings()
         settings["_timezone"] = config.timezone
+        if name == "tasks":
+            settings["_habitica_settings"] = config.module_settings("habits")
 
         try:
             image = module.render(config.display_width, config.display_height, settings)

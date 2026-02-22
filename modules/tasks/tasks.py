@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -11,16 +12,18 @@ logger = logging.getLogger(__name__)
 
 TOKEN_PATH = Path(__file__).parent.parent.parent / "google_token.json"
 SCOPES = ["https://www.googleapis.com/auth/tasks.readonly"]
+HABITICA_API = "https://habitica.com/api/v3"
 
 
 class TasksModule(BaseModule):
     NAME = "tasks"
     DISPLAY_NAME = "Tasks"
-    DESCRIPTION = "Shows your Google Tasks on the display"
+    DESCRIPTION = "Shows Google Tasks and Habitica to-dos side by side"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
-        tasks = self._fetch_tasks(settings)
-        return self._draw(width, height, tasks, settings)
+        google_tasks = self._fetch_tasks(settings)
+        habitica_todos = self._fetch_habitica_todos(settings)
+        return self._draw(width, height, google_tasks, habitica_todos, settings)
 
     def default_settings(self) -> dict:
         return {
@@ -77,7 +80,7 @@ class TasksModule(BaseModule):
             for item in items:
                 title = item.get("title", "").strip()
                 if not title:
-                    continue  # skip blank tasks
+                    continue
 
                 due = None
                 if item.get("due"):
@@ -92,7 +95,6 @@ class TasksModule(BaseModule):
                     "due": due,
                 })
 
-            # Sort: incomplete first, then dated before dateless, then by due date
             tasks.sort(key=lambda t: (
                 0 if t["status"] == "needsAction" else 1,
                 0 if t["due"] else 1,
@@ -104,6 +106,62 @@ class TasksModule(BaseModule):
             logger.error(f"Google Tasks fetch failed: {e}")
             return []
 
+    def _fetch_habitica_todos(self, settings: dict) -> list:
+        """Fetch incomplete and completed to-dos from Habitica API."""
+        hab = settings.get("_habitica_settings", {})
+        user_id = hab.get("habitica_user_id", "")
+        api_token = hab.get("habitica_api_token", "")
+
+        if not user_id or not api_token:
+            return []
+
+        try:
+            url = f"{HABITICA_API}/tasks/user?type=todos"
+            req = urllib.request.Request(url, headers={
+                "x-api-user": user_id,
+                "x-api-key": api_token,
+                "x-client": f"{user_id}-EinkPi",
+                "Content-Type": "application/json",
+            })
+
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read())
+
+            if not result.get("success"):
+                logger.error(f"Habitica API error: {result}")
+                return []
+
+            todos = []
+            for item in result["data"]:
+                title = item.get("text", "").strip()
+                if not title:
+                    continue
+
+                due = None
+                if item.get("date"):
+                    try:
+                        due = datetime.fromisoformat(item["date"].replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        pass
+
+                todos.append({
+                    "title": title,
+                    "status": "completed" if item.get("completed", False) else "needsAction",
+                    "due": due,
+                })
+
+            # Sort: incomplete first, then by due date
+            todos.sort(key=lambda t: (
+                0 if t["status"] == "needsAction" else 1,
+                0 if t["due"] else 1,
+                t["due"] or datetime.max,
+            ))
+            return todos
+
+        except Exception as e:
+            logger.error(f"Habitica todos fetch failed: {e}")
+            return []
+
     def _load_fonts(self):
         font_paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -113,7 +171,7 @@ class TasksModule(BaseModule):
             "/System/Library/Fonts/Helvetica.ttc",
         ]
         fonts = {}
-        for size_name, size in [("lg", 26), ("md", 17), ("sm", 13)]:
+        for size_name, size in [("lg", 26), ("md", 17), ("sm", 13), ("sub", 15)]:
             loaded = False
             for path in font_paths:
                 try:
@@ -126,7 +184,8 @@ class TasksModule(BaseModule):
                 fonts[size_name] = ImageFont.load_default()
         return fonts
 
-    def _draw(self, width: int, height: int, tasks: list, settings: dict) -> Image.Image:
+    def _draw(self, width: int, height: int, google_tasks: list,
+              habitica_todos: list, settings: dict) -> Image.Image:
         img = Image.new("L", (width, height), 255)
         draw = ImageDraw.Draw(img)
         fonts = self._load_fonts()
@@ -134,7 +193,7 @@ class TasksModule(BaseModule):
         margin = 20
         y = margin
 
-        # Title bar
+        # Title bar (full width)
         draw.text((margin, y), "Tasks", fill=0, font=fonts["lg"])
         tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
         date_str = datetime.now(tz).strftime("%a, %b %d")
@@ -142,96 +201,128 @@ class TasksModule(BaseModule):
         draw.text((width - margin - date_w, y + 4), date_str, fill=100, font=fonts["md"])
         y += 40
 
-        # Separator
+        # Full-width separator
         draw.line([(margin, y), (width - margin, y)], fill=0, width=2)
-        y += 15
+        y += 8
+
+        # Split into two halves
+        mid_x = width // 2
+        left_x = margin
+        left_w = mid_x - margin - 5
+        right_x = mid_x + 5
+        right_w = width - margin - right_x
+
+        # Vertical divider
+        draw.line([(mid_x, y), (mid_x, height - margin)], fill=180, width=1)
+
+        # Sub-headers
+        draw.text((left_x, y), "Google Tasks", fill=80, font=fonts["sub"])
+        draw.text((right_x, y), "Habitica", fill=80, font=fonts["sub"])
+        y += 24
+
+        # Thin separator under sub-headers
+        draw.line([(left_x, y), (mid_x - 5, y)], fill=180, width=1)
+        draw.line([(right_x, y), (width - margin, y)], fill=180, width=1)
+        y += 8
+
+        # Draw task lists in each half
+        hab = settings.get("_habitica_settings", {})
+        has_habitica_creds = bool(hab.get("habitica_user_id")) and bool(hab.get("habitica_api_token"))
+
+        self._draw_task_list(
+            draw, google_tasks, left_x, y, left_w, height - y - margin, fonts,
+            empty_msg="Not authorized" if not TOKEN_PATH.exists() else "No tasks",
+            empty_hint="Open Tasks settings to connect Google" if not TOKEN_PATH.exists() else None,
+        )
+        self._draw_task_list(
+            draw, habitica_todos, right_x, y, right_w, height - y - margin, fonts,
+            empty_msg="Not configured" if not has_habitica_creds else "No to-dos",
+            empty_hint="Set Habitica credentials in Habits settings" if not has_habitica_creds else None,
+        )
+
+        return img
+
+    def _draw_task_list(self, draw, tasks, x, y, w, h, fonts,
+                        empty_msg="No tasks", empty_hint=None):
+        """Draw a list of tasks (checkboxes + titles) within a bounded area."""
+        row_h = 32
+        checkbox_size = 12
+        max_y = y + h
 
         if not tasks:
-            if not TOKEN_PATH.exists():
-                draw.text((margin, y), "Not authorized", fill=80, font=fonts["md"])
-                draw.text((margin, y + 28), "Open Tasks settings in the web UI to connect", fill=120, font=fonts["sm"])
-                draw.text((margin, y + 48), "your Google account.", fill=120, font=fonts["sm"])
-            else:
-                draw.text((margin, y), "No tasks found", fill=80, font=fonts["md"])
-            return img
+            draw.text((x, y), empty_msg, fill=80, font=fonts["md"])
+            if empty_hint:
+                draw.text((x, y + 24), empty_hint, fill=120, font=fonts["sm"])
+            return
 
-        # Split into incomplete and completed
         incomplete = [t for t in tasks if t["status"] == "needsAction"]
         completed = [t for t in tasks if t["status"] == "completed"]
 
-        row_h = 36
-        checkbox_size = 14
+        cy = y
+        max_title_w = w - checkbox_size - 16
 
-        # Draw incomplete tasks
+        # Incomplete tasks
         for task in incomplete:
-            if y + row_h > height - margin:
-                draw.text((margin, y), "...", fill=100, font=fonts["md"])
-                break
+            if cy + row_h > max_y:
+                draw.text((x, cy), "...", fill=100, font=fonts["md"])
+                return
 
             # Empty checkbox
-            cx, cy = margin, y + 2
+            bx, by = x, cy + 2
             draw.rectangle(
-                [cx, cy, cx + checkbox_size, cy + checkbox_size],
+                [bx, by, bx + checkbox_size, by + checkbox_size],
                 outline=0, width=2,
             )
 
-            # Title
+            # Title (truncate if needed)
             title = task["title"]
-            max_title_w = width - margin * 2 - 30 - 120
-            text_x = margin + checkbox_size + 12
+            text_x = x + checkbox_size + 8
             if fonts["md"].getlength(title) > max_title_w:
-                while fonts["md"].getlength(title + "...") > max_title_w and len(title) > 0:
+                while fonts["md"].getlength(title + "..") > max_title_w and len(title) > 1:
                     title = title[:-1]
-                title += "..."
-            draw.text((text_x, y - 1), title, fill=0, font=fonts["md"])
+                title += ".."
+            draw.text((text_x, cy - 1), title, fill=0, font=fonts["md"])
 
-            # Due date (or "No date" for dateless tasks)
-            if task["due"]:
-                due_str = f"Due: {task['due'].strftime('%a %d')}"
-                draw.text((width - margin - fonts["sm"].getlength(due_str), y + 1),
-                           due_str, fill=100, font=fonts["sm"])
+            cy += row_h
 
-            y += row_h
-
-        # Draw completed section
+        # Completed section
         if completed:
-            if y + row_h + 10 < height - margin:
-                y += 5
-                label = " Completed "
-                label_w = fonts["sm"].getlength(label)
-                line_y = y + 7
-                draw.line([(margin, line_y), (width // 2 - label_w // 2 - 5, line_y)], fill=180, width=1)
-                draw.text((width // 2 - label_w // 2, y), label, fill=150, font=fonts["sm"])
-                draw.line([(width // 2 + label_w // 2 + 5, line_y), (width - margin, line_y)], fill=180, width=1)
-                y += 25
+            if cy + row_h + 10 >= max_y:
+                return
 
-                for task in completed:
-                    if y + row_h > height - margin:
-                        break
+            cy += 4
+            label = " Done "
+            label_w = fonts["sm"].getlength(label)
+            line_y = cy + 7
+            center = x + w // 2
+            draw.line([(x, line_y), (center - label_w // 2 - 3, line_y)], fill=180, width=1)
+            draw.text((center - label_w // 2, cy), label, fill=150, font=fonts["sm"])
+            draw.line([(center + label_w // 2 + 3, line_y), (x + w, line_y)], fill=180, width=1)
+            cy += 22
 
-                    # Checked checkbox
-                    cx, cy = margin, y + 2
-                    draw.rectangle(
-                        [cx, cy, cx + checkbox_size, cy + checkbox_size],
-                        outline=100, fill=200, width=2,
-                    )
-                    # Checkmark
-                    draw.line([(cx + 3, cy + 7), (cx + 6, cy + 11)], fill=60, width=2)
-                    draw.line([(cx + 6, cy + 11), (cx + 12, cy + 3)], fill=60, width=2)
+            for task in completed:
+                if cy + row_h > max_y:
+                    break
 
-                    # Strikethrough title
-                    title = task["title"]
-                    text_x = margin + checkbox_size + 12
-                    max_title_w = width - margin * 2 - 30
-                    if fonts["md"].getlength(title) > max_title_w:
-                        while fonts["md"].getlength(title + "...") > max_title_w and len(title) > 0:
-                            title = title[:-1]
-                        title += "..."
-                    draw.text((text_x, y - 1), title, fill=150, font=fonts["md"])
-                    # Strikethrough line
-                    title_w = fonts["md"].getlength(title)
-                    draw.line([(text_x, y + 8), (text_x + title_w, y + 8)], fill=150, width=1)
+                # Checked checkbox
+                bx, by = x, cy + 2
+                draw.rectangle(
+                    [bx, by, bx + checkbox_size, by + checkbox_size],
+                    outline=100, fill=200, width=2,
+                )
+                # Checkmark
+                draw.line([(bx + 2, by + 6), (bx + 5, by + 9)], fill=60, width=2)
+                draw.line([(bx + 5, by + 9), (bx + 10, by + 2)], fill=60, width=2)
 
-                    y += row_h
+                # Strikethrough title
+                title = task["title"]
+                text_x = x + checkbox_size + 8
+                if fonts["md"].getlength(title) > max_title_w:
+                    while fonts["md"].getlength(title + "..") > max_title_w and len(title) > 1:
+                        title = title[:-1]
+                    title += ".."
+                draw.text((text_x, cy - 1), title, fill=150, font=fonts["md"])
+                title_w = fonts["md"].getlength(title)
+                draw.line([(text_x, cy + 8), (text_x + title_w, cy + 8)], fill=150, width=1)
 
-        return img
+                cy += row_h
