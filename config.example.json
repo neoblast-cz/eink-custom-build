@@ -6,6 +6,10 @@
     "refresh_interval_minutes": 30,
     "timezone": "Europe/Brussels"
   },
+  "google": {
+    "client_id": "",
+    "client_secret": ""
+  },
   "active_module": "photos",
   "modules": {
     "calendar": {

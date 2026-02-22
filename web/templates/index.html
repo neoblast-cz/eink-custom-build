@@ -53,6 +53,25 @@
         </select>
         <p class="hint">Used for calendar events, tasks, and dashboard times.</p>
 
+        <hr>
+
+        <h3>Google API</h3>
+        <p class="hint">Shared credentials for Tasks and Habits modules. Create an OAuth 2.0 Client ID in your <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
+        <p class="hint">Add these redirect URIs:<br>
+          <code>http://{{ request.host }}/oauth/google/callback</code><br>
+          <code>http://{{ request.host }}/oauth/google/sheets/callback</code>
+        </p>
+
+        <label for="google_client_id">Client ID</label>
+        <input type="text" id="google_client_id" name="google_client_id"
+               value="{{ config.google_client_id }}"
+               placeholder="xxxx.apps.googleusercontent.com">
+
+        <label for="google_client_secret">Client Secret</label>
+        <input type="password" id="google_client_secret" name="google_client_secret"
+               value="{{ config.google_client_secret }}"
+               placeholder="GOCSPX-...">
+
         <div class="form-actions">
           <button type="submit" class="btn-primary">Save Settings</button>
         </div>

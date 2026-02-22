@@ -24,8 +24,6 @@ class TasksModule(BaseModule):
 
     def default_settings(self) -> dict:
         return {
-            "client_id": "",
-            "client_secret": "",
             "list_id": "@default",
             "max_tasks": 15,
             "show_completed": "",

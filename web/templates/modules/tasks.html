@@ -4,29 +4,7 @@
 <h2>Configure: Tasks</h2>
 
 <div class="settings-form">
-  <h3>Google Cloud Setup</h3>
-  <p class="hint">
-    To connect Google Tasks, you need a Google Cloud project:
-  </p>
-  <ol class="hint">
-    <li>Go to <a href="https://console.cloud.google.com/apis/library/tasks.googleapis.com" target="_blank">Google Cloud Console</a> and enable the Tasks API</li>
-    <li>Go to <strong>Credentials</strong> &gt; <strong>Create Credentials</strong> &gt; <strong>OAuth 2.0 Client ID</strong></li>
-    <li>Application type: <strong>Web application</strong></li>
-    <li>Add authorized redirect URI: <code>http://{{ request.host }}/oauth/google/callback</code></li>
-    <li>Copy the Client ID and Client Secret below</li>
-  </ol>
-
   <form method="POST">
-    <label for="client_id">Client ID</label>
-    <input type="text" id="client_id" name="client_id"
-           value="{{ settings.client_id | default('') }}"
-           placeholder="xxxx.apps.googleusercontent.com">
-
-    <label for="client_secret">Client Secret</label>
-    <input type="password" id="client_secret" name="client_secret"
-           value="{{ settings.client_secret | default('') }}"
-           placeholder="GOCSPX-...">
-
     <label for="max_tasks">Maximum tasks to show</label>
     <input type="number" id="max_tasks" name="max_tasks"
            value="{{ settings.max_tasks | default(15) }}" min="1" max="50">
@@ -43,10 +21,10 @@
     </div>
   </form>
 
-  {% if settings.client_id and settings.client_secret %}
   <hr style="border-color: #444; margin: 1.5rem 0;">
 
   <h3>Authorization</h3>
+  <p class="hint">Uses Google API credentials from the main <a href="/">Settings</a> page.</p>
   {% if authorized %}
     <p style="color: #6f6;">Authorized with Google Tasks</p>
     <a href="/oauth/google/start" class="btn-secondary">Re-authorize</a>
@@ -96,14 +74,13 @@
         fetch('/module/tasks', {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'client_id={{ settings.client_id }}&client_secret={{ settings.client_secret }}&max_tasks={{ settings.max_tasks | default(15) }}&list_id=' + encodeURIComponent(select.value)
+          body: 'max_tasks={{ settings.max_tasks | default(15) }}&list_id=' + encodeURIComponent(select.value)
         }).then(function() {
           status.textContent = 'Task list saved!';
         });
       });
     })();
   </script>
-  {% endif %}
   {% endif %}
 </div>
 {% endblock %}

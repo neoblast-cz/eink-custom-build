@@ -5,7 +5,8 @@
       "Bash(gh api:*)",
       "Bash(python3:*)",
       "Bash(/c/Users/neobl/AppData/Local/Microsoft/WindowsApps/python.exe:*)",
-      "Bash(python -m pip install:*)"
+      "Bash(python -m pip install:*)",
+      "Bash(python:*)"
     ]
   }
 }

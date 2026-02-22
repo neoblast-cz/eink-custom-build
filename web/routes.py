@@ -80,6 +80,14 @@ def create_app(config, module_registry, scheduler):
             tz = request.form.get("timezone", "Europe/Brussels")
             config.set(tz, "display", "timezone")
 
+            # Google API credentials
+            g_id = request.form.get("google_client_id", "").strip()
+            g_secret = request.form.get("google_client_secret", "").strip()
+            if g_id:
+                config.set(g_id, "google", "client_id")
+            if g_secret:
+                config.set(g_secret, "google", "client_secret")
+
             config.save()
             return redirect(url_for("index"))
 
@@ -213,12 +221,11 @@ def create_app(config, module_registry, scheduler):
         except ImportError:
             return "google-auth-oauthlib not installed. Run: pip install google-auth-oauthlib", 500
 
-        settings = config.module_settings("tasks") or {}
-        client_id = settings.get("client_id", "")
-        client_secret = settings.get("client_secret", "")
+        client_id = config.google_client_id
+        client_secret = config.google_client_secret
 
         if not client_id or not client_secret:
-            return redirect(url_for("module_config", name="tasks"))
+            return "Set up Google API credentials in Settings first.", 400
 
         client_config = {
             "web": {
@@ -250,9 +257,8 @@ def create_app(config, module_registry, scheduler):
         except ImportError:
             return "google-auth-oauthlib not installed", 500
 
-        settings = config.module_settings("tasks") or {}
-        client_id = settings.get("client_id", "")
-        client_secret = settings.get("client_secret", "")
+        client_id = config.google_client_id
+        client_secret = config.google_client_secret
 
         client_config = {
             "web": {
@@ -319,13 +325,11 @@ def create_app(config, module_registry, scheduler):
         except ImportError:
             return "google-auth-oauthlib not installed. Run: pip install google-auth-oauthlib", 500
 
-        # Reuse client_id/secret from Tasks module settings
-        settings = config.module_settings("tasks") or {}
-        client_id = settings.get("client_id", "")
-        client_secret = settings.get("client_secret", "")
+        client_id = config.google_client_id
+        client_secret = config.google_client_secret
 
         if not client_id or not client_secret:
-            return "Set up Google OAuth credentials in the Tasks module settings first.", 400
+            return "Set up Google API credentials in Settings first.", 400
 
         client_config = {
             "web": {
@@ -357,9 +361,8 @@ def create_app(config, module_registry, scheduler):
         except ImportError:
             return "google-auth-oauthlib not installed", 500
 
-        settings = config.module_settings("tasks") or {}
-        client_id = settings.get("client_id", "")
-        client_secret = settings.get("client_secret", "")
+        client_id = config.google_client_id
+        client_secret = config.google_client_secret
 
         client_config = {
             "web": {

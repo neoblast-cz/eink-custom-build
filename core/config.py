@@ -51,6 +51,14 @@ class Config:
         return self.get("display", "timezone", default="Europe/Brussels")
 
     @property
+    def google_client_id(self):
+        return self.get("google", "client_id", default="")
+
+    @property
+    def google_client_secret(self):
+        return self.get("google", "client_secret", default="")
+
+    @property
     def active_module(self):
         return self.get("active_module", default="calendar")
 

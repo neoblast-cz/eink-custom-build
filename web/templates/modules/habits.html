@@ -4,16 +4,15 @@
 <h2>Configure: Habits</h2>
 
 <div class="settings-form">
-  <h3>Google Sheets Setup</h3>
+  <h3>Google Sheet</h3>
   <p class="hint">
-    Habits are read from a Google Sheet. Create a sheet with this layout:
+    Create a Google Sheet with this layout:
   </p>
   <ol class="hint">
     <li>Column A: <strong>Date</strong> (e.g. 2026-02-22)</li>
     <li>Columns B, C, D...: habit names as headers (e.g. Exercise, Read, Meditate)</li>
     <li>Use checkboxes (TRUE/FALSE) in the data cells</li>
-    <li>Make sure the <strong>Google Sheets API</strong> is enabled in your <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank">Google Cloud Console</a></li>
-    <li>Add redirect URI: <code>http://{{ request.host }}/oauth/google/sheets/callback</code></li>
+    <li>Enable the <strong>Google Sheets API</strong> in your <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank">Google Cloud Console</a></li>
   </ol>
 
   <form method="POST">
@@ -36,12 +35,11 @@
   <hr style="border-color: #444; margin: 1.5rem 0;">
 
   <h3>Authorization</h3>
-  <p class="hint">Uses the same Google OAuth credentials from the Tasks module settings.</p>
+  <p class="hint">Uses Google API credentials from the main <a href="/">Settings</a> page.</p>
   {% if sheets_authorized %}
     <p style="color: #6f6;">Authorized with Google Sheets</p>
     <a href="/oauth/google/sheets/start" class="btn-secondary">Re-authorize</a>
   {% else %}
-    <p class="hint">Click below to authorize read access to your Google Sheet.</p>
     <a href="/oauth/google/sheets/start" class="btn-primary">Authorize with Google</a>
   {% endif %}
 

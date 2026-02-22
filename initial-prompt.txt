@@ -73,4 +73,17 @@ To deploy on Pi
 git clone https://github.com/neoblast-cz/eink-custom-build.git /home/pi/einkpi
 cd /home/pi/einkpi
 bash install.sh
-The web UI will be available at http://<pi-ip>:8080. Upload photos, set an ICS calendar URL, and switch between modules from the dashboard.
+The web UI will be available at http://raspberrypi:8080. Upload photos, set an ICS calendar URL, and switch between modules from the dashboard.
+
+http://raspberrypi:8080
+
+Useful commands:
+===========================
+sudo systemctl status einkpi    # Check status
+sudo systemctl restart einkpi   # Restart
+sudo journalctl -u einkpi -f    # View logs
+
+Update:
+===========================
+git pull
+sudo systemctl restart einkpi
