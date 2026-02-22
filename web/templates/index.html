@@ -57,9 +57,8 @@
 
         <h3>Google API</h3>
         <p class="hint">Shared credentials for Tasks and Habits modules. Create an OAuth 2.0 Client ID in your <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
-        <p class="hint">Add these redirect URIs:<br>
-          <code>http://{{ request.host }}/oauth/google/callback</code><br>
-          <code>http://{{ request.host }}/oauth/google/sheets/callback</code>
+        <p class="hint">Add this redirect URI:<br>
+          <code>http://{{ request.host }}/oauth/google/callback</code>
         </p>
 
         <label for="google_client_id">Client ID</label>

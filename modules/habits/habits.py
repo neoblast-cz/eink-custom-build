@@ -1,99 +1,88 @@
 import logging
-from datetime import datetime, timedelta
-from pathlib import Path
+import urllib.request
+import json
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
 
 logger = logging.getLogger(__name__)
 
-SHEETS_TOKEN_PATH = Path(__file__).parent.parent.parent / "google_sheets_token.json"
-SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+HABITICA_API = "https://habitica.com/api/v3"
 
 
 class HabitsModule(BaseModule):
     NAME = "habits"
     DISPLAY_NAME = "Habits"
-    DESCRIPTION = "Track daily habits via Google Sheets"
+    DESCRIPTION = "Track daily habits from Habitica"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
-        data = self._fetch_from_sheets(settings)
+        data = self._fetch_from_habitica(settings)
         tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
         today = datetime.now(tz).date()
         max_display = int(settings.get("max_display", 8))
         return self._draw(width, height, data, today, max_display)
 
     def default_settings(self) -> dict:
-        return {"spreadsheet_id": "", "max_display": 8}
+        return {"habitica_user_id": "", "habitica_api_token": "", "max_display": 8}
 
-    def _get_sheets_service(self, settings: dict):
-        """Build an authenticated Google Sheets API service."""
-        try:
-            from google.oauth2.credentials import Credentials
-            from google.auth.transport.requests import Request
-            from googleapiclient.discovery import build
-        except ImportError:
-            logger.error("Install google libs: pip install google-auth-oauthlib google-api-python-client")
-            return None
+    def _fetch_from_habitica(self, settings: dict) -> dict:
+        """Fetch dailies from Habitica API and convert to internal format."""
+        user_id = settings.get("habitica_user_id", "")
+        api_token = settings.get("habitica_api_token", "")
 
-        if not SHEETS_TOKEN_PATH.exists():
-            logger.warning("Google Sheets not authorized. Visit the Habits settings page to authorize.")
-            return None
-
-        try:
-            creds = Credentials.from_authorized_user_file(str(SHEETS_TOKEN_PATH), SHEETS_SCOPES)
-
-            if creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                SHEETS_TOKEN_PATH.write_text(creds.to_json())
-
-            return build("sheets", "v4", credentials=creds)
-        except Exception as e:
-            logger.error(f"Google Sheets auth failed: {e}")
-            return None
-
-    def _fetch_from_sheets(self, settings: dict) -> dict:
-        """Fetch habits data from Google Sheets and convert to internal format."""
-        spreadsheet_id = settings.get("spreadsheet_id", "")
-        if not spreadsheet_id:
-            return {"habits": [], "log": {}}
-
-        service = self._get_sheets_service(settings)
-        if not service:
+        if not user_id or not api_token:
             return {"habits": [], "log": {}}
 
         try:
-            # Read all data from the first sheet
-            result = service.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id,
-                range="A1:Z1000",
-            ).execute()
+            url = f"{HABITICA_API}/tasks/user?type=dailys"
+            req = urllib.request.Request(url, headers={
+                "x-api-user": user_id,
+                "x-api-key": api_token,
+                "x-client": f"{user_id}-EinkPi",
+                "Content-Type": "application/json",
+            })
 
-            rows = result.get("values", [])
-            if len(rows) < 1:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read())
+
+            if not result.get("success"):
+                logger.error(f"Habitica API error: {result}")
                 return {"habits": [], "log": {}}
 
-            # Row 0 = headers: ["Date", "Exercise", "Read 30 min", ...]
-            headers = rows[0]
-            habit_names = headers[1:]  # Skip "Date" column
+            dailies = result["data"]
 
-            habits = [{"name": name} for name in habit_names]
-            log = {}
+            # Build habits list and log from history
+            habits = []
+            log = {}  # {date_str: {habit_name: bool}}
 
-            for row in rows[1:]:
-                if not row or not row[0]:
-                    continue
-                date_str = row[0].strip()
-                day_log = {}
-                for i, habit_name in enumerate(habit_names):
-                    cell = row[i + 1].strip().upper() if i + 1 < len(row) else ""
-                    day_log[habit_name] = cell in ("TRUE", "1", "YES")
-                log[date_str] = day_log
+            for daily in dailies:
+                name = daily["text"]
+                habits.append({"name": name})
+
+                # Process history entries
+                for entry in daily.get("history", []):
+                    dt = datetime.fromtimestamp(entry["date"] / 1000, tz=timezone.utc)
+                    date_str = dt.strftime("%Y-%m-%d")
+                    completed = entry.get("completed", False)
+
+                    if date_str not in log:
+                        log[date_str] = {}
+
+                    # Multiple entries per day possible — last one wins
+                    log[date_str][name] = completed
+
+                # Today's status comes from the task's `completed` field
+                # (history may not have today's entry yet)
+                today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if today_str not in log:
+                    log[today_str] = {}
+                log[today_str][name] = daily.get("completed", False)
 
             return {"habits": habits, "log": log}
 
         except Exception as e:
-            logger.error(f"Google Sheets fetch failed: {e}")
+            logger.error(f"Habitica fetch failed: {e}")
             return {"habits": [], "log": {}}
 
     def _calc_percentage(self, log: dict, habit_name: str, today, days: int) -> int | None:
@@ -146,21 +135,18 @@ class HabitsModule(BaseModule):
 
         if not habits:
             draw.text((margin, margin), "Habits", fill=0, font=fonts["lg"])
-            if not SHEETS_TOKEN_PATH.exists():
-                draw.text((margin, margin + 35), "Not authorized", fill=80, font=fonts["md"])
-                draw.text((margin, margin + 58), "Open Habits settings in the web UI to connect", fill=120, font=fonts["sm"])
-                draw.text((margin, margin + 78), "your Google Sheet.", fill=120, font=fonts["sm"])
-            else:
-                draw.text((margin, margin + 35), "No habits found in the spreadsheet.", fill=100, font=fonts["md"])
+            draw.text((margin, margin + 35), "No habits found.", fill=80, font=fonts["md"])
+            draw.text((margin, margin + 58), "Enter your Habitica credentials in the", fill=120, font=fonts["sm"])
+            draw.text((margin, margin + 78), "module settings page.", fill=120, font=fonts["sm"])
             return img
 
         # Layout: left section (name + circles + per-habit %) | right section (overall big %)
-        overall_panel_w = 120  # right panel for overall stats
+        overall_panel_w = 120
         left_w = width - overall_panel_w
 
         name_w = 150
         circles_w = days_shown * 22 + 10
-        pct_col_w = 50  # per-habit percentage columns (7d, 30d)
+        pct_col_w = 50
         content_w = name_w + circles_w + pct_col_w * 2
         x_start = max(margin, (left_w - content_w) // 2)
 

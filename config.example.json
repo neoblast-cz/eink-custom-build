@@ -22,6 +22,6 @@
     },
     "tasks": {},
     "dashboard": {},
-    "habits": {"spreadsheet_id": ""}
+    "habits": {"habitica_user_id": "", "habitica_api_token": ""}
   }
 }
