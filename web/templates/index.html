@@ -43,6 +43,16 @@
                value="{{ config.refresh_minutes }}" min="1" max="1440">
         <p class="hint">Used when only one module is in rotation (no cycling).</p>
 
+        <hr>
+
+        <label for="timezone">Time Zone</label>
+        <select id="timezone" name="timezone">
+          {% for tz_name in timezones %}
+          <option value="{{ tz_name }}" {{ 'selected' if tz_name == config.timezone else '' }}>{{ tz_name }}</option>
+          {% endfor %}
+        </select>
+        <p class="hint">Used for calendar events, tasks, and dashboard times.</p>
+
         <div class="form-actions">
           <button type="submit" class="btn-primary">Save Settings</button>
         </div>

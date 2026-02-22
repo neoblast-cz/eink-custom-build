@@ -23,6 +23,7 @@ class Renderer:
         settings = self.config.module_settings(module_name)
         if not settings:
             settings = module.default_settings()
+        settings["_timezone"] = self.config.timezone
 
         w = self.config.display_width
         h = self.config.display_height

@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
 
+COMMON_TIMEZONES = [
+    "Europe/Brussels", "Europe/London", "Europe/Paris", "Europe/Berlin",
+    "Europe/Amsterdam", "Europe/Prague", "Europe/Rome", "Europe/Madrid",
+    "Europe/Zurich", "Europe/Vienna", "Europe/Warsaw", "Europe/Stockholm",
+    "Europe/Helsinki", "Europe/Athens", "Europe/Bucharest", "Europe/Moscow",
+    "US/Eastern", "US/Central", "US/Mountain", "US/Pacific",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Toronto", "America/Sao_Paulo",
+    "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore", "Asia/Kolkata",
+    "Asia/Dubai", "Asia/Seoul",
+    "Australia/Sydney", "Australia/Melbourne",
+    "Pacific/Auckland",
+    "UTC",
+]
+
 
 def create_app(config, module_registry, scheduler):
     app = Flask(
@@ -35,6 +50,7 @@ def create_app(config, module_registry, scheduler):
             refresh_minutes=config.refresh_minutes,
             rotation=rotation,
             config=config,
+            timezones=COMMON_TIMEZONES,
         )
 
     @app.route("/settings", methods=["GET", "POST"])
@@ -59,6 +75,10 @@ def create_app(config, module_registry, scheduler):
             # Set active_module to the first rotation entry for fallback
             if rotation:
                 config.set(rotation[0]["module"], "active_module")
+
+            # Timezone
+            tz = request.form.get("timezone", "Europe/Brussels")
+            config.set(tz, "display", "timezone")
 
             config.save()
             return redirect(url_for("index"))
@@ -119,6 +139,7 @@ def create_app(config, module_registry, scheduler):
         settings = config.module_settings(name)
         if not settings:
             settings = module.default_settings()
+        settings["_timezone"] = config.timezone
 
         try:
             image = module.render(config.display_width, config.display_height, settings)

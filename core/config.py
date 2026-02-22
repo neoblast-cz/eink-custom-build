@@ -47,6 +47,10 @@ class Config:
         return self.get("display", "refresh_interval_minutes", default=30)
 
     @property
+    def timezone(self):
+        return self.get("display", "timezone", default="Europe/Brussels")
+
+    @property
     def active_module(self):
         return self.get("active_module", default="calendar")
 

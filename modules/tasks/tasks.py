@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
 
@@ -137,7 +138,8 @@ class TasksModule(BaseModule):
 
         # Title bar
         draw.text((margin, y), "Tasks", fill=0, font=fonts["lg"])
-        date_str = datetime.now().strftime("%a, %b %d")
+        tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
+        date_str = datetime.now(tz).strftime("%a, %b %d")
         date_w = fonts["md"].getlength(date_str)
         draw.text((width - margin - date_w, y + 4), date_str, fill=100, font=fonts["md"])
         y += 40

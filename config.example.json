@@ -3,7 +3,8 @@
     "width": 800,
     "height": 480,
     "rotation": 0,
-    "refresh_interval_minutes": 30
+    "refresh_interval_minutes": 30,
+    "timezone": "Europe/Brussels"
   },
   "active_module": "photos",
   "modules": {

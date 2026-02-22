@@ -1,6 +1,7 @@
 import calendar
 import logging
 from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
 
@@ -31,13 +32,14 @@ class CalendarModule(BaseModule):
         try:
             import requests
             from icalendar import Calendar
-            from dateutil.tz import tzlocal
+
+            tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
 
             response = requests.get(ics_url, timeout=15)
             response.raise_for_status()
             cal = Calendar.from_ical(response.text)
 
-            now = datetime.now(tzlocal())
+            now = datetime.now(tz)
             end = now + timedelta(days=int(settings.get("days_ahead", 7)))
             max_events = int(settings.get("max_events", 8))
 
@@ -53,10 +55,12 @@ class CalendarModule(BaseModule):
 
                 if isinstance(dt, datetime):
                     if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=tzlocal())
+                        dt = dt.replace(tzinfo=tz)
+                    else:
+                        dt = dt.astimezone(tz)
                     all_day = False
                 else:
-                    dt = datetime.combine(dt, datetime.min.time(), tzinfo=tzlocal())
+                    dt = datetime.combine(dt, datetime.min.time(), tzinfo=tz)
                     all_day = True
 
                 if dt < end and dt >= now - timedelta(hours=1):
@@ -76,9 +80,9 @@ class CalendarModule(BaseModule):
             logger.error(f"Calendar fetch failed: {e}")
             return []
 
-    def _get_event_day_counts(self, events: list) -> dict:
+    def _get_event_day_counts(self, events: list, tz) -> dict:
         """Get dict of day number -> event count for the current month."""
-        today = datetime.now()
+        today = datetime.now(tz)
         counts = {}
         for event in events:
             dt = event["start"]
@@ -113,11 +117,12 @@ class CalendarModule(BaseModule):
         draw = ImageDraw.Draw(img)
         fonts = self._load_fonts()
 
-        event_day_counts = self._get_event_day_counts(events)
+        tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
+        event_day_counts = self._get_event_day_counts(events, tz)
 
         # Layout: left panel uses full height for month grid, right panel for events
         left_w = 300
-        self._draw_month_grid(draw, 15, 15, left_w - 30, height - 30, event_day_counts, fonts)
+        self._draw_month_grid(draw, 15, 15, left_w - 30, height - 30, event_day_counts, fonts, tz)
 
         # Vertical divider
         draw.line([(left_w, 10), (left_w, height - 10)], fill=180, width=1)
@@ -127,8 +132,8 @@ class CalendarModule(BaseModule):
 
         return img
 
-    def _draw_month_grid(self, draw, x, y, w, h, event_day_counts, fonts):
-        today = datetime.now()
+    def _draw_month_grid(self, draw, x, y, w, h, event_day_counts, fonts, tz=None):
+        today = datetime.now(tz)
 
         # Month/year header
         header = today.strftime("%B %Y")

@@ -2,6 +2,7 @@ import math
 import logging
 from io import BytesIO
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
 
@@ -142,7 +143,8 @@ class DashboardModule(BaseModule):
         if not api_key or not home or not office:
             return {}
 
-        hour = datetime.now().hour
+        tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
+        hour = datetime.now(tz).hour
         if hour < 14:
             origin, destination = home, office
             label = "To Office"
