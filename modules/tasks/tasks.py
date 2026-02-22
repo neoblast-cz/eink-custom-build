@@ -274,14 +274,26 @@ class TasksModule(BaseModule):
                 outline=0, width=2,
             )
 
-            # Title (truncate if needed)
+            # Due date string (if available)
+            due_str = ""
+            due_w = 0
+            if task.get("due"):
+                due_str = task["due"].strftime("%b %d")
+                due_w = fonts["sm"].getlength(due_str) + 8
+
+            # Title (truncate if needed, accounting for due date width)
             title = task["title"]
             text_x = x + checkbox_size + 8
-            if fonts["md"].getlength(title) > max_title_w:
-                while fonts["md"].getlength(title + "..") > max_title_w and len(title) > 1:
+            avail_w = max_title_w - due_w
+            if fonts["md"].getlength(title) > avail_w:
+                while fonts["md"].getlength(title + "..") > avail_w and len(title) > 1:
                     title = title[:-1]
                 title += ".."
             draw.text((text_x, cy - 1), title, fill=0, font=fonts["md"])
+
+            # Draw due date to the right
+            if due_str:
+                draw.text((x + w - due_w + 4, cy + 1), due_str, fill=100, font=fonts["sm"])
 
             cy += row_h
 

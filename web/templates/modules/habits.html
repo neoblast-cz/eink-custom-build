@@ -4,23 +4,9 @@
 <h2>Configure: Habits</h2>
 
 <div class="settings-form">
-  <h3>Habitica</h3>
-  <p class="hint">
-    Connect your <a href="https://habitica.com" target="_blank">Habitica</a> account to display your dailies.
-    Find your credentials at <a href="https://habitica.com/user/settings/api" target="_blank">Settings &gt; API</a>.
-  </p>
+  <p class="hint">Habitica credentials are configured in the <a href="/">Permissions</a> section on the main page.</p>
 
   <form method="POST">
-    <label for="habitica_user_id">User ID</label>
-    <input type="text" id="habitica_user_id" name="habitica_user_id"
-           value="{{ settings.habitica_user_id | default('') }}"
-           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-
-    <label for="habitica_api_token">API Token</label>
-    <input type="password" id="habitica_api_token" name="habitica_api_token"
-           value="{{ settings.habitica_api_token | default('') }}"
-           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-
     <label for="max_display">Max habits to display</label>
     <input type="number" id="max_display" name="max_display"
            value="{{ settings.max_display | default(8) }}" min="1" max="12">

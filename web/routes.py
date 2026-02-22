@@ -51,6 +51,7 @@ def create_app(config, module_registry, scheduler):
             rotation=rotation,
             config=config,
             timezones=COMMON_TIMEZONES,
+            habitica_settings=config.module_settings("habits"),
         )
 
     @app.route("/settings", methods=["GET", "POST"])
@@ -80,18 +81,31 @@ def create_app(config, module_registry, scheduler):
             tz = request.form.get("timezone", "Europe/Brussels")
             config.set(tz, "display", "timezone")
 
-            # Google API credentials
-            g_id = request.form.get("google_client_id", "").strip()
-            g_secret = request.form.get("google_client_secret", "").strip()
-            if g_id:
-                config.set(g_id, "google", "client_id")
-            if g_secret:
-                config.set(g_secret, "google", "client_secret")
-
             config.save()
             return redirect(url_for("index"))
 
         # Settings are now inline on the dashboard
+        return redirect(url_for("index"))
+
+    @app.route("/permissions", methods=["POST"])
+    def permissions():
+        # Google API credentials
+        g_id = request.form.get("google_client_id", "").strip()
+        g_secret = request.form.get("google_client_secret", "").strip()
+        if g_id:
+            config.set(g_id, "google", "client_id")
+        if g_secret:
+            config.set(g_secret, "google", "client_secret")
+
+        # Habitica credentials (stored in habits module settings)
+        hab_user = request.form.get("habitica_user_id", "").strip()
+        hab_token = request.form.get("habitica_api_token", "").strip()
+        habits_settings = config.module_settings("habits") or {}
+        habits_settings["habitica_user_id"] = hab_user
+        habits_settings["habitica_api_token"] = hab_token
+        config.set(habits_settings, "modules", "habits")
+
+        config.save()
         return redirect(url_for("index"))
 
     @app.route("/module/<name>", methods=["GET", "POST"])

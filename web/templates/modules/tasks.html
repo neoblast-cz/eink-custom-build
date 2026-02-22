@@ -23,8 +23,8 @@
 
   <hr style="border-color: #444; margin: 1.5rem 0;">
 
-  <h3>Authorization</h3>
-  <p class="hint">Uses Google API credentials from the main <a href="/">Settings</a> page.</p>
+  <h3>Google Tasks Authorization</h3>
+  <p class="hint">Google API credentials are configured in <a href="/">Permissions</a> on the main page.</p>
   {% if authorized %}
     <p style="color: #6f6;">Authorized with Google Tasks</p>
     <a href="/oauth/google/start" class="btn-secondary">Re-authorize</a>
@@ -32,11 +32,6 @@
     <p class="hint">Click below to sign in with your Google account and allow access to Tasks.</p>
     <a href="/oauth/google/start" class="btn-primary">Authorize with Google</a>
   {% endif %}
-
-  <hr style="border-color: #444; margin: 1.5rem 0;">
-
-  <h3>Habitica To-dos</h3>
-  <p class="hint">The right half of the Tasks display shows Habitica to-dos. Credentials are shared from the <a href="/module/habits">Habits settings</a> page.</p>
 
   {% if authorized %}
   <hr style="border-color: #444; margin: 1.5rem 0;">

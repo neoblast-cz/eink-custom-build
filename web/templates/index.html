@@ -53,10 +53,20 @@
         </select>
         <p class="hint">Used for calendar events, tasks, and dashboard times.</p>
 
-        <hr>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Save Settings</button>
+        </div>
+      </form>
+    </div>
 
+    <!-- Permissions toggle -->
+    <div class="settings-toggle" onclick="togglePermissions()">
+      <span id="permissionsArrow">&#9654;</span> Permissions
+    </div>
+    <div id="permissionsPanel" class="settings-collapsible" style="display: none;">
+      <form method="POST" action="/permissions" class="settings-form">
         <h3>Google API</h3>
-        <p class="hint">Shared credentials for Tasks and Habits modules. Create an OAuth 2.0 Client ID in your <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
+        <p class="hint">Used by the Tasks module. Create an OAuth 2.0 Client ID in your <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
         <p class="hint">Add this redirect URI:<br>
           <code>http://{{ request.host }}/oauth/google/callback</code>
         </p>
@@ -71,8 +81,23 @@
                value="{{ config.google_client_secret }}"
                placeholder="GOCSPX-...">
 
+        <hr>
+
+        <h3>Habitica</h3>
+        <p class="hint">Used by the Habits and Tasks modules. Find your credentials at <a href="https://habitica.com/user/settings/api" target="_blank">Habitica Settings &gt; API</a>.</p>
+
+        <label for="habitica_user_id">User ID</label>
+        <input type="text" id="habitica_user_id" name="habitica_user_id"
+               value="{{ habitica_settings.habitica_user_id | default('') }}"
+               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+
+        <label for="habitica_api_token">API Token</label>
+        <input type="password" id="habitica_api_token" name="habitica_api_token"
+               value="{{ habitica_settings.habitica_api_token | default('') }}"
+               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+
         <div class="form-actions">
-          <button type="submit" class="btn-primary">Save Settings</button>
+          <button type="submit" class="btn-primary">Save Permissions</button>
         </div>
       </form>
     </div>
@@ -171,6 +196,18 @@ function updateActiveCard() {
 function toggleSettings() {
   const panel = document.getElementById('settingsPanel');
   const arrow = document.getElementById('settingsArrow');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    arrow.innerHTML = '&#9660;';
+  } else {
+    panel.style.display = 'none';
+    arrow.innerHTML = '&#9654;';
+  }
+}
+
+function togglePermissions() {
+  const panel = document.getElementById('permissionsPanel');
+  const arrow = document.getElementById('permissionsArrow');
   if (panel.style.display === 'none') {
     panel.style.display = 'block';
     arrow.innerHTML = '&#9660;';
