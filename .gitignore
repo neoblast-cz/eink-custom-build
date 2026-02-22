@@ -9,4 +9,5 @@ uploads/*
 *.log
 .env
 google_token.json
+google_sheets_token.json
 habits.json

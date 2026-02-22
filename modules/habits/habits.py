@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,36 +7,94 @@ from modules.base import BaseModule
 
 logger = logging.getLogger(__name__)
 
-DATA_PATH = Path(__file__).parent.parent.parent / "habits.json"
+SHEETS_TOKEN_PATH = Path(__file__).parent.parent.parent / "google_sheets_token.json"
+SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 
 class HabitsModule(BaseModule):
     NAME = "habits"
     DISPLAY_NAME = "Habits"
-    DESCRIPTION = "Track daily habits with streaks and success percentages"
+    DESCRIPTION = "Track daily habits via Google Sheets"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
-        data = self._load_data()
+        data = self._fetch_from_sheets(settings)
         tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
         today = datetime.now(tz).date()
         max_display = int(settings.get("max_display", 8))
         return self._draw(width, height, data, today, max_display)
 
     def default_settings(self) -> dict:
-        return {"max_display": 8}
+        return {"spreadsheet_id": "", "max_display": 8}
 
-    @staticmethod
-    def _load_data() -> dict:
-        if DATA_PATH.exists():
-            try:
-                return json.loads(DATA_PATH.read_text())
-            except (json.JSONDecodeError, OSError):
-                pass
-        return {"habits": [], "log": {}}
+    def _get_sheets_service(self, settings: dict):
+        """Build an authenticated Google Sheets API service."""
+        try:
+            from google.oauth2.credentials import Credentials
+            from google.auth.transport.requests import Request
+            from googleapiclient.discovery import build
+        except ImportError:
+            logger.error("Install google libs: pip install google-auth-oauthlib google-api-python-client")
+            return None
 
-    @staticmethod
-    def save_data(data: dict):
-        DATA_PATH.write_text(json.dumps(data, indent=2))
+        if not SHEETS_TOKEN_PATH.exists():
+            logger.warning("Google Sheets not authorized. Visit the Habits settings page to authorize.")
+            return None
+
+        try:
+            creds = Credentials.from_authorized_user_file(str(SHEETS_TOKEN_PATH), SHEETS_SCOPES)
+
+            if creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                SHEETS_TOKEN_PATH.write_text(creds.to_json())
+
+            return build("sheets", "v4", credentials=creds)
+        except Exception as e:
+            logger.error(f"Google Sheets auth failed: {e}")
+            return None
+
+    def _fetch_from_sheets(self, settings: dict) -> dict:
+        """Fetch habits data from Google Sheets and convert to internal format."""
+        spreadsheet_id = settings.get("spreadsheet_id", "")
+        if not spreadsheet_id:
+            return {"habits": [], "log": {}}
+
+        service = self._get_sheets_service(settings)
+        if not service:
+            return {"habits": [], "log": {}}
+
+        try:
+            # Read all data from the first sheet
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="A1:Z1000",
+            ).execute()
+
+            rows = result.get("values", [])
+            if len(rows) < 1:
+                return {"habits": [], "log": {}}
+
+            # Row 0 = headers: ["Date", "Exercise", "Read 30 min", ...]
+            headers = rows[0]
+            habit_names = headers[1:]  # Skip "Date" column
+
+            habits = [{"name": name} for name in habit_names]
+            log = {}
+
+            for row in rows[1:]:
+                if not row or not row[0]:
+                    continue
+                date_str = row[0].strip()
+                day_log = {}
+                for i, habit_name in enumerate(habit_names):
+                    cell = row[i + 1].strip().upper() if i + 1 < len(row) else ""
+                    day_log[habit_name] = cell in ("TRUE", "1", "YES")
+                log[date_str] = day_log
+
+            return {"habits": habits, "log": log}
+
+        except Exception as e:
+            logger.error(f"Google Sheets fetch failed: {e}")
+            return {"habits": [], "log": {}}
 
     def _calc_percentage(self, log: dict, habit_name: str, today, days: int) -> int | None:
         done = 0
@@ -64,7 +121,7 @@ class HabitsModule(BaseModule):
             "/System/Library/Fonts/Helvetica.ttc",
         ]
         fonts = {}
-        for size_name, size in [("lg", 24), ("md", 16), ("sm", 13), ("xs", 11)]:
+        for size_name, size in [("xl", 36), ("lg", 24), ("md", 16), ("sm", 13), ("xs", 11)]:
             loaded = False
             for path in font_paths:
                 try:
@@ -89,29 +146,35 @@ class HabitsModule(BaseModule):
 
         if not habits:
             draw.text((margin, margin), "Habits", fill=0, font=fonts["lg"])
-            draw.text((margin, margin + 35), "No habits configured yet.", fill=100, font=fonts["md"])
-            draw.text((margin, margin + 58), "Add habits in the module settings.", fill=140, font=fonts["sm"])
+            if not SHEETS_TOKEN_PATH.exists():
+                draw.text((margin, margin + 35), "Not authorized", fill=80, font=fonts["md"])
+                draw.text((margin, margin + 58), "Open Habits settings in the web UI to connect", fill=120, font=fonts["sm"])
+                draw.text((margin, margin + 78), "your Google Sheet.", fill=120, font=fonts["sm"])
+            else:
+                draw.text((margin, margin + 35), "No habits found in the spreadsheet.", fill=100, font=fonts["md"])
             return img
 
-        # Layout columns
-        name_w = 120       # habit name column
-        circles_w = days_shown * 22 + 10  # circles area
-        pct_w = 55         # each percentage column
-        total_w = name_w + circles_w + pct_w * 3
-        x_start = max(margin, (width - total_w) // 2)
+        # Layout: left section (name + circles + per-habit %) | right section (overall big %)
+        overall_panel_w = 120  # right panel for overall stats
+        left_w = width - overall_panel_w
+
+        name_w = 150
+        circles_w = days_shown * 22 + 10
+        pct_col_w = 50  # per-habit percentage columns (7d, 30d)
+        content_w = name_w + circles_w + pct_col_w * 2
+        x_start = max(margin, (left_w - content_w) // 2)
 
         col_name = x_start
         col_circles = col_name + name_w
         col_7d = col_circles + circles_w
-        col_30d = col_7d + pct_w
-        col_365d = col_30d + pct_w
+        col_30d = col_7d + pct_col_w
 
         y = margin
 
         # Header
         draw.text((col_name, y), "Habits", fill=0, font=fonts["lg"])
 
-        # Day labels above circles (last 10 days)
+        # Day labels above circles
         for i in range(days_shown):
             day = today - timedelta(days=days_shown - 1 - i)
             day_label = str(day.day)
@@ -119,25 +182,24 @@ class HabitsModule(BaseModule):
             lw = fonts["xs"].getlength(day_label)
             draw.text((cx - lw // 2, y + 4), day_label, fill=160, font=fonts["xs"])
 
-        # Percentage headers
-        for label, col_x in [("7d", col_7d), ("30d", col_30d), ("365d", col_365d)]:
+        # Percentage headers (7d, 30d)
+        for label, col_x in [("7d", col_7d), ("30d", col_30d)]:
             lw = fonts["sm"].getlength(label)
-            draw.text((col_x + (pct_w - lw) // 2, y + 2), label, fill=100, font=fonts["sm"])
+            draw.text((col_x + (pct_col_w - lw) // 2, y + 2), label, fill=100, font=fonts["sm"])
 
         y += 32
 
         # Separator
-        draw.line([(x_start, y), (col_365d + pct_w, y)], fill=180, width=1)
+        draw.line([(x_start, y), (col_30d + pct_col_w, y)], fill=180, width=1)
         y += 8
 
         # Habit rows
-        row_h = (height - y - margin - 35) // max(len(habits), 1)
+        row_h = (height - y - margin - 10) // max(len(habits), 1)
         row_h = min(row_h, 48)
         circle_r = 8
 
         overall_7d = []
         overall_30d = []
-        overall_365d = []
 
         for habit_info in habits:
             habit_name = habit_info["name"]
@@ -167,48 +229,56 @@ class HabitsModule(BaseModule):
                     draw.ellipse([cx - circle_r, cy - circle_r, cx + circle_r, cy + circle_r],
                                   outline=180, width=1)
 
-            # Percentages
+            # Per-habit percentages (7d, 30d)
             for days, col_x, overall_list in [
                 (7, col_7d, overall_7d),
                 (30, col_30d, overall_30d),
-                (365, col_365d, overall_365d),
             ]:
                 pct = self._calc_percentage(log, habit_name, today, days)
                 if pct is not None:
                     overall_list.append(pct)
                     pct_str = f"{pct}%"
-                    # Color: darker = better
                     fill = max(0, 160 - pct)
                 else:
                     pct_str = "--"
                     fill = 180
                 pw = fonts["sm"].getlength(pct_str)
-                draw.text((col_x + (pct_w - pw) // 2, y + (row_h - 14) // 2),
+                draw.text((col_x + (pct_col_w - pw) // 2, y + (row_h - 14) // 2),
                            pct_str, fill=fill, font=fonts["sm"])
 
             y += row_h
 
-        # Overall separator
-        y += 4
-        draw.line([(x_start, y), (col_365d + pct_w, y)], fill=180, width=1)
-        y += 8
+        # Separator below habits
+        draw.line([(x_start, y + 4), (col_30d + pct_col_w, y + 4)], fill=180, width=1)
 
-        # Overall row
-        draw.text((col_name, y), "Overall", fill=0, font=fonts["md"])
+        # ---- Right panel: Overall percentages in big font ----
+        panel_x = left_w
+        panel_y = margin + 10
+        panel_center = panel_x + overall_panel_w // 2
 
-        for values, col_x in [
-            (overall_7d, col_7d),
-            (overall_30d, col_30d),
-            (overall_365d, col_365d),
-        ]:
+        # "Overall" label
+        label = "Overall"
+        lw = fonts["md"].getlength(label)
+        draw.text((panel_center - lw // 2, panel_y), label, fill=80, font=fonts["md"])
+        panel_y += 35
+
+        for values, label in [(overall_7d, "7d"), (overall_30d, "30d")]:
             if values:
                 avg = round(sum(values) / len(values))
                 pct_str = f"{avg}%"
-                fill = max(0, 160 - avg)
+                fill = max(0, 140 - avg)
             else:
                 pct_str = "--"
                 fill = 180
-            pw = fonts["md"].getlength(pct_str)
-            draw.text((col_x + (pct_w - pw) // 2, y), pct_str, fill=fill, font=fonts["md"])
+
+            # Big percentage
+            pw = fonts["xl"].getlength(pct_str)
+            draw.text((panel_center - pw // 2, panel_y), pct_str, fill=fill, font=fonts["xl"])
+            panel_y += 42
+
+            # Small label below
+            lw = fonts["sm"].getlength(label)
+            draw.text((panel_center - lw // 2, panel_y), label, fill=120, font=fonts["sm"])
+            panel_y += 35
 
         return img

@@ -108,6 +108,9 @@ def create_app(config, module_registry, scheduler):
         if name == "tasks":
             token_path = Path(__file__).parent.parent / "google_token.json"
             extra["authorized"] = token_path.exists()
+        elif name == "habits":
+            sheets_token_path = Path(__file__).parent.parent / "google_sheets_token.json"
+            extra["sheets_authorized"] = sheets_token_path.exists()
 
         return render_template(
             module.get_template_name(),
@@ -199,67 +202,6 @@ def create_app(config, module_registry, scheduler):
         if path.exists():
             path.unlink()
         return redirect(url_for("photos_list"))
-
-    # ---- Habits routes ----
-
-    @app.route("/habits/checkin")
-    def habits_checkin():
-        return render_template("habits_checkin.html")
-
-    @app.route("/habits/data")
-    def habits_data():
-        from modules.habits.habits import HabitsModule
-        data = HabitsModule._load_data()
-        return jsonify(data)
-
-    @app.route("/habits/check", methods=["POST"])
-    def habits_check():
-        from modules.habits.habits import HabitsModule
-        data = HabitsModule._load_data()
-        body = request.get_json()
-        habit = body.get("habit", "")
-        date_str = body.get("date", "")
-        done = body.get("done", False)
-
-        if not habit or not date_str:
-            return jsonify({"error": "Missing habit or date"}), 400
-
-        if date_str not in data.setdefault("log", {}):
-            data["log"][date_str] = {}
-        data["log"][date_str][habit] = done
-
-        HabitsModule.save_data(data)
-        return jsonify({"status": "ok"})
-
-    @app.route("/habits/add", methods=["POST"])
-    def habits_add():
-        from modules.habits.habits import HabitsModule
-        from datetime import date
-        data = HabitsModule._load_data()
-        body = request.get_json()
-        name = body.get("name", "").strip()
-
-        if not name:
-            return jsonify({"error": "Empty name"}), 400
-
-        habits = data.setdefault("habits", [])
-        if any(h["name"] == name for h in habits):
-            return jsonify({"error": "Already exists"}), 400
-
-        habits.append({"name": name, "created": date.today().isoformat()})
-        HabitsModule.save_data(data)
-        return jsonify({"status": "ok"})
-
-    @app.route("/habits/remove", methods=["POST"])
-    def habits_remove():
-        from modules.habits.habits import HabitsModule
-        data = HabitsModule._load_data()
-        body = request.get_json()
-        name = body.get("name", "")
-
-        data["habits"] = [h for h in data.get("habits", []) if h["name"] != name]
-        HabitsModule.save_data(data)
-        return jsonify({"status": "ok"})
 
     # ---- Google OAuth routes for Tasks module ----
 
@@ -366,5 +308,82 @@ def create_app(config, module_registry, scheduler):
         except Exception as e:
             logger.error(f"Failed to fetch task lists: {e}")
             return jsonify({"error": str(e)}), 500
+
+    # ---- Google OAuth routes for Sheets (Habits module) ----
+
+    @app.route("/oauth/google/sheets/start")
+    def oauth_sheets_start():
+        """Start Google OAuth flow for Sheets API (read-only)."""
+        try:
+            from google_auth_oauthlib.flow import Flow
+        except ImportError:
+            return "google-auth-oauthlib not installed. Run: pip install google-auth-oauthlib", 500
+
+        # Reuse client_id/secret from Tasks module settings
+        settings = config.module_settings("tasks") or {}
+        client_id = settings.get("client_id", "")
+        client_secret = settings.get("client_secret", "")
+
+        if not client_id or not client_secret:
+            return "Set up Google OAuth credentials in the Tasks module settings first.", 400
+
+        client_config = {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [f"http://{request.host}/oauth/google/sheets/callback"],
+            }
+        }
+
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+            redirect_uri=f"http://{request.host}/oauth/google/sheets/callback",
+        )
+
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            prompt="consent",
+        )
+        return redirect(auth_url)
+
+    @app.route("/oauth/google/sheets/callback")
+    def oauth_sheets_callback():
+        """Handle Google OAuth callback for Sheets, save token."""
+        try:
+            from google_auth_oauthlib.flow import Flow
+        except ImportError:
+            return "google-auth-oauthlib not installed", 500
+
+        settings = config.module_settings("tasks") or {}
+        client_id = settings.get("client_id", "")
+        client_secret = settings.get("client_secret", "")
+
+        client_config = {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [f"http://{request.host}/oauth/google/sheets/callback"],
+            }
+        }
+
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+            redirect_uri=f"http://{request.host}/oauth/google/sheets/callback",
+        )
+
+        flow.fetch_token(authorization_response=request.url)
+
+        creds = flow.credentials
+        token_path = Path(__file__).parent.parent / "google_sheets_token.json"
+        token_path.write_text(creds.to_json())
+        logger.info("Google Sheets authorized successfully")
+
+        return redirect(url_for("module_config", name="habits"))
 
     return app

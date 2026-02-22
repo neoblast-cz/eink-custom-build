@@ -18,6 +18,6 @@
     },
     "tasks": {},
     "dashboard": {},
-    "habits": {}
+    "habits": {"spreadsheet_id": ""}
   }
 }
