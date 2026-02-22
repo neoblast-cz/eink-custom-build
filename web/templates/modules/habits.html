@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Habits Settings{% endblock %}
+{% block content %}
+<h2>Configure: Habits</h2>
+
+<div class="settings-form">
+  <h3>Your Habits</h3>
+  <p class="hint">Add up to 8 habits to track daily. Use the check-in page (<a href="/habits/checkin">/habits/checkin</a>) to mark them done each day.</p>
+
+  <div id="habitsList">
+    <!-- Populated by JS -->
+  </div>
+
+  <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+    <input type="text" id="newHabitName" placeholder="New habit name" style="flex: 1;">
+    <button class="btn-primary" onclick="addHabit()">Add</button>
+  </div>
+
+  <div class="form-actions">
+    <a href="/" class="btn-secondary">Back to Dashboard</a>
+    <a href="/habits/checkin" class="btn-primary">Open Check-in</a>
+  </div>
+</div>
+
+<script>
+function loadHabits() {
+  fetch('/habits/data')
+    .then(r => r.json())
+    .then(data => {
+      const list = document.getElementById('habitsList');
+      list.innerHTML = '';
+      (data.habits || []).forEach(h => {
+        const div = document.createElement('div');
+        div.className = 'rotation-entry';
+        div.innerHTML = `
+          <span style="flex:1; font-size: 0.95rem;">${h.name}</span>
+          <span class="hint" style="margin:0;">since ${h.created || '?'}</span>
+          <button class="btn-danger" onclick="removeHabit('${h.name.replace(/'/g, "\\'")}')">Remove</button>
+        `;
+        list.appendChild(div);
+      });
+      if (!data.habits || data.habits.length === 0) {
+        list.innerHTML = '<p class="hint">No habits yet. Add one below.</p>';
+      }
+    });
+}
+
+function addHabit() {
+  const input = document.getElementById('newHabitName');
+  const name = input.value.trim();
+  if (!name) return;
+  fetch('/habits/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name})
+  }).then(() => { input.value = ''; loadHabits(); });
+}
+
+function removeHabit(name) {
+  if (!confirm('Remove "' + name + '"? Log data will be kept.')) return;
+  fetch('/habits/remove', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name})
+  }).then(() => loadHabits());
+}
+
+document.getElementById('newHabitName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addHabit();
+});
+
+loadHabits();
+</script>
+{% endblock %}

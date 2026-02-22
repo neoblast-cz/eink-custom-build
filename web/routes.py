@@ -200,6 +200,67 @@ def create_app(config, module_registry, scheduler):
             path.unlink()
         return redirect(url_for("photos_list"))
 
+    # ---- Habits routes ----
+
+    @app.route("/habits/checkin")
+    def habits_checkin():
+        return render_template("habits_checkin.html")
+
+    @app.route("/habits/data")
+    def habits_data():
+        from modules.habits.habits import HabitsModule
+        data = HabitsModule._load_data()
+        return jsonify(data)
+
+    @app.route("/habits/check", methods=["POST"])
+    def habits_check():
+        from modules.habits.habits import HabitsModule
+        data = HabitsModule._load_data()
+        body = request.get_json()
+        habit = body.get("habit", "")
+        date_str = body.get("date", "")
+        done = body.get("done", False)
+
+        if not habit or not date_str:
+            return jsonify({"error": "Missing habit or date"}), 400
+
+        if date_str not in data.setdefault("log", {}):
+            data["log"][date_str] = {}
+        data["log"][date_str][habit] = done
+
+        HabitsModule.save_data(data)
+        return jsonify({"status": "ok"})
+
+    @app.route("/habits/add", methods=["POST"])
+    def habits_add():
+        from modules.habits.habits import HabitsModule
+        from datetime import date
+        data = HabitsModule._load_data()
+        body = request.get_json()
+        name = body.get("name", "").strip()
+
+        if not name:
+            return jsonify({"error": "Empty name"}), 400
+
+        habits = data.setdefault("habits", [])
+        if any(h["name"] == name for h in habits):
+            return jsonify({"error": "Already exists"}), 400
+
+        habits.append({"name": name, "created": date.today().isoformat()})
+        HabitsModule.save_data(data)
+        return jsonify({"status": "ok"})
+
+    @app.route("/habits/remove", methods=["POST"])
+    def habits_remove():
+        from modules.habits.habits import HabitsModule
+        data = HabitsModule._load_data()
+        body = request.get_json()
+        name = body.get("name", "")
+
+        data["habits"] = [h for h in data.get("habits", []) if h["name"] != name]
+        HabitsModule.save_data(data)
+        return jsonify({"status": "ok"})
+
     # ---- Google OAuth routes for Tasks module ----
 
     @app.route("/oauth/google/start")

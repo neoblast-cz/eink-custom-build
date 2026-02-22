@@ -13,12 +13,14 @@ from modules.photos.photos import PhotosModule
 from modules.calendar_mod.calendar_mod import CalendarModule
 from modules.tasks.tasks import TasksModule
 from modules.dashboard.dashboard import DashboardModule
+from modules.habits.habits import HabitsModule
 
 MODULE_REGISTRY = {
     PhotosModule.NAME: PhotosModule(),
     CalendarModule.NAME: CalendarModule(),
     TasksModule.NAME: TasksModule(),
     DashboardModule.NAME: DashboardModule(),
+    HabitsModule.NAME: HabitsModule(),
 }
 # ============================================================
 
