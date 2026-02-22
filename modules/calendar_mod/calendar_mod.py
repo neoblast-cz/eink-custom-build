@@ -246,6 +246,7 @@ class CalendarModule(BaseModule):
 
             # Month separator when events cross into a new month
             if month_key != last_month_key and last_month_key is not None:
+                y += 12  # extra spacing above month separator
                 if y + 20 + entry_h > max_y:
                     break
                 month_label = dt.strftime("%B")

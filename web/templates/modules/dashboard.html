@@ -13,25 +13,8 @@
   </select>
 
   <hr>
-  <h3>Traffic (Top-Right)</h3>
-
-  <label for="google_maps_api_key">Google Maps API Key</label>
-  <input type="text" id="google_maps_api_key" name="google_maps_api_key"
-         value="{{ settings.google_maps_api_key | default('') }}"
-         placeholder="AIza...">
-  <p class="hint">Get a free key at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>. Enable the Directions API.</p>
-
-  <label for="home_address">Home Address</label>
-  <input type="text" id="home_address" name="home_address"
-         value="{{ settings.home_address | default('') }}"
-         placeholder="123 Main St, Prague">
-  <p class="hint">Your home address for morning commute (before 14:00).</p>
-
-  <label for="office_address">Office Address</label>
-  <input type="text" id="office_address" name="office_address"
-         value="{{ settings.office_address | default('') }}"
-         placeholder="456 Office Blvd, Prague">
-  <p class="hint">Your office address. Afternoon commute (after 14:00) shows office to home.</p>
+  <h3>Agenda (Top-Right)</h3>
+  <p class="hint">Shows today's remaining events (or tomorrow's after 20:00). Uses the ICS URL from <a href="/module/calendar">Calendar settings</a>.</p>
 
   <hr>
   <h3>Weather, AQI &amp; Radar (Bottom Half)</h3>

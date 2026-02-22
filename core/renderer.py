@@ -26,6 +26,8 @@ class Renderer:
         settings["_timezone"] = self.config.timezone
         if module_name == "tasks":
             settings["_habitica_settings"] = self.config.module_settings("habits")
+        if module_name == "dashboard":
+            settings["_calendar_settings"] = self.config.module_settings("calendar")
 
         w = self.config.display_width
         h = self.config.display_height

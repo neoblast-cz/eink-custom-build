@@ -1,7 +1,7 @@
 import math
 import logging
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
@@ -28,7 +28,7 @@ AQI_LEVELS = [
 class DashboardModule(BaseModule):
     NAME = "dashboard"
     DISPLAY_NAME = "Dashboard"
-    DESCRIPTION = "Affirmations, traffic, weather/AQI, and precipitation radar"
+    DESCRIPTION = "Affirmations, agenda, weather/AQI, and precipitation radar"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
         img = Image.new("L", (width, height), 255)
@@ -47,9 +47,10 @@ class DashboardModule(BaseModule):
         font_size_name = settings.get("message_font", "medium")
         self._draw_message(draw, 0, 0, mid_x, mid_y, affirmation, font_size_name, fonts)
 
-        # Top-right: Traffic commute
-        traffic = self._fetch_traffic(settings)
-        self._draw_traffic(draw, mid_x, 0, width, mid_y, traffic, fonts)
+        # Top-right: Today's agenda
+        tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
+        agenda_events = self._fetch_agenda(settings, tz)
+        self._draw_agenda(draw, mid_x, 0, width, mid_y, agenda_events, tz, fonts)
 
         # Bottom-left: Weather + AQI
         weather = self._fetch_weather(settings.get("weather_location", ""))
@@ -68,9 +69,6 @@ class DashboardModule(BaseModule):
             "latitude": "",
             "longitude": "",
             "message_font": "medium",
-            "google_maps_api_key": "",
-            "home_address": "",
-            "office_address": "",
         }
 
     def _load_fonts(self):
@@ -133,94 +131,148 @@ class DashboardModule(BaseModule):
             lw = font.getlength(line)
             draw.text((cx - lw // 2, start_y + i * line_h), line, fill=0, font=font)
 
-    # ── Traffic (top-right) ──────────────────────────────────────────
+    # ── Agenda (top-right) ───────────────────────────────────────────
 
-    def _fetch_traffic(self, settings: dict) -> dict:
-        api_key = settings.get("google_maps_api_key", "")
-        home = settings.get("home_address", "")
-        office = settings.get("office_address", "")
-
-        if not api_key or not home or not office:
-            return {}
-
-        tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
-        hour = datetime.now(tz).hour
-        if hour < 14:
-            origin, destination = home, office
-            label = "To Office"
-        else:
-            origin, destination = office, home
-            label = "To Home"
+    def _fetch_agenda(self, settings: dict, tz) -> list:
+        """Fetch today's remaining events (or tomorrow's if evening) from ICS."""
+        cal_settings = settings.get("_calendar_settings", {})
+        ics_url = cal_settings.get("ics_url", "")
+        if not ics_url:
+            return []
 
         try:
             import requests
-            resp = requests.get(
-                "https://maps.googleapis.com/maps/api/directions/json",
-                params={
-                    "origin": origin,
-                    "destination": destination,
-                    "departure_time": "now",
-                    "key": api_key,
-                },
-                timeout=15,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            from icalendar import Calendar
 
-            if data.get("status") != "OK" or not data.get("routes"):
-                logger.error(f"Directions API error: {data.get('status')}")
-                return {"label": label, "error": data.get("status", "No route")}
+            now = datetime.now(tz)
+            hour = now.hour
 
-            leg = data["routes"][0]["legs"][0]
-            duration_traffic = leg.get("duration_in_traffic", leg.get("duration", {}))
-            return {
-                "label": label,
-                "duration": duration_traffic.get("text", "?"),
-                "distance": leg.get("distance", {}).get("text", ""),
-                "summary": data["routes"][0].get("summary", ""),
-            }
+            # After 20:00, show tomorrow's events instead
+            if hour >= 20:
+                day_start = datetime.combine(
+                    (now + timedelta(days=1)).date(), datetime.min.time(), tzinfo=tz
+                )
+                day_end = day_start + timedelta(days=1)
+            else:
+                day_start = now
+                day_end = datetime.combine(
+                    now.date() + timedelta(days=1), datetime.min.time(), tzinfo=tz
+                )
+
+            response = requests.get(ics_url, timeout=15)
+            response.raise_for_status()
+            cal = Calendar.from_ical(response.text)
+
+            events = []
+            for component in cal.walk():
+                if component.name != "VEVENT":
+                    continue
+
+                dtstart = component.get("dtstart")
+                if dtstart is None:
+                    continue
+                dt = dtstart.dt
+
+                if isinstance(dt, datetime):
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=tz)
+                    else:
+                        dt = dt.astimezone(tz)
+                    all_day = False
+                else:
+                    dt = datetime.combine(dt, datetime.min.time(), tzinfo=tz)
+                    all_day = True
+
+                if dt >= day_start and dt < day_end:
+                    events.append({
+                        "summary": str(component.get("summary", "Untitled")),
+                        "start": dt,
+                        "all_day": all_day,
+                    })
+
+            events.sort(key=lambda e: (0 if not e["all_day"] else -1, e["start"]))
+            return events
+
+        except ImportError:
+            logger.error("Install icalendar: pip install icalendar requests")
+            return []
         except Exception as e:
-            logger.error(f"Traffic fetch failed: {e}")
-            return {"label": label, "error": str(e)}
+            logger.error(f"Agenda fetch failed: {e}")
+            return []
 
-    def _draw_traffic(self, draw, x1, y1, x2, y2, traffic, fonts):
-        cx = (x1 + x2) // 2
-        cy = (y1 + y2) // 2
+    def _draw_agenda(self, draw, x1, y1, x2, y2, events, tz, fonts):
+        pad = 15
+        x = x1 + pad
+        max_x = x2 - pad
+        w = max_x - x
+        y = y1 + pad
 
-        if not traffic:
-            draw.text((cx - fonts["md"].getlength("Traffic") // 2, cy - 15),
-                       "Traffic", fill=120, font=fonts["md"])
-            msg = "Set API key & addresses"
-            draw.text((cx - fonts["sm"].getlength(msg) // 2, cy + 12),
-                       msg, fill=160, font=fonts["sm"])
+        now = datetime.now(tz)
+        is_tomorrow = now.hour >= 20
+
+        # Header
+        if is_tomorrow:
+            header = "Tomorrow"
+        else:
+            header = "Today"
+        draw.text((x, y), header, fill=0, font=fonts["lg"])
+
+        # Date next to header
+        target_date = (now + timedelta(days=1)) if is_tomorrow else now
+        date_str = target_date.strftime("%a, %b %d")
+        dw = fonts["sm"].getlength(date_str)
+        draw.text((max_x - dw, y + 6), date_str, fill=100, font=fonts["sm"])
+        y += 36
+
+        # Separator
+        draw.line([(x, y), (max_x, y)], fill=180, width=1)
+        y += 8
+
+        if not events:
+            cy = (y + y2 - pad) // 2
+            msg = "No events"
+            mw = fonts["md"].getlength(msg)
+            draw.text(((x + max_x) // 2 - mw // 2, cy - 10), msg, fill=140, font=fonts["md"])
             return
 
-        label = traffic.get("label", "Commute")
-        lw = fonts["md"].getlength(label)
-        draw.text((cx - lw // 2, cy - 55), label, fill=80, font=fonts["md"])
+        row_h = 28
+        max_y = y2 - pad
 
-        if "error" in traffic:
-            err = traffic["error"][:30]
-            ew = fonts["sm"].getlength(err)
-            draw.text((cx - ew // 2, cy - 10), err, fill=100, font=fonts["sm"])
-            return
+        for event in events:
+            if y + row_h > max_y:
+                draw.text((x, y), "...", fill=100, font=fonts["sm"])
+                break
 
-        # Duration (large)
-        duration = traffic.get("duration", "?")
-        dw = fonts["xl"].getlength(duration)
-        draw.text((cx - dw // 2, cy - 25), duration, fill=0, font=fonts["xl"])
+            # Time column
+            if event["all_day"]:
+                time_str = "All day"
+            else:
+                time_str = event["start"].strftime("%H:%M")
+            time_w = fonts["sm"].getlength(time_str)
 
-        # Distance + route
-        details = traffic.get("distance", "")
-        if traffic.get("summary"):
-            details += f" via {traffic['summary']}"
-        if details:
-            # Truncate if too long
-            max_w = x2 - x1 - 30
-            while fonts["sm"].getlength(details) > max_w and len(details) > 3:
-                details = details[:-4] + "..."
-            dtw = fonts["sm"].getlength(details)
-            draw.text((cx - dtw // 2, cy + 25), details, fill=120, font=fonts["sm"])
+            # Check if event is currently happening or already past
+            is_past = not is_tomorrow and not event["all_day"] and event["start"] < now
+            fill = 160 if is_past else 0
+            time_fill = 160 if is_past else 80
+
+            draw.text((x, y), time_str, fill=time_fill, font=fonts["sm"])
+
+            # Event title
+            title_x = x + 60
+            title = event["summary"]
+            max_title_w = max_x - title_x
+            if fonts["md"].getlength(title) > max_title_w:
+                while fonts["md"].getlength(title + "..") > max_title_w and len(title) > 1:
+                    title = title[:-1]
+                title += ".."
+            draw.text((title_x, y - 2), title, fill=fill, font=fonts["md"])
+
+            # Strikethrough for past events
+            if is_past:
+                tw = fonts["md"].getlength(title)
+                draw.line([(title_x, y + 7), (title_x + tw, y + 7)], fill=160, width=1)
+
+            y += row_h
 
     # ── Weather + AQI (bottom-left) ──────────────────────────────────
 
