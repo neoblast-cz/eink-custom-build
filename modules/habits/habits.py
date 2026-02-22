@@ -131,7 +131,7 @@ class HabitsModule(BaseModule):
         habits = data.get("habits", [])[:max_display]
         log = data.get("log", {})
         margin = 20
-        days_shown = 10
+        days_shown = 15
 
         if not habits:
             draw.text((margin, margin), "Habits", fill=0, font=fonts["lg"])

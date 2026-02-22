@@ -1,7 +1,7 @@
 import math
 import logging
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
@@ -28,7 +28,7 @@ AQI_LEVELS = [
 class DashboardModule(BaseModule):
     NAME = "dashboard"
     DISPLAY_NAME = "Dashboard"
-    DESCRIPTION = "Affirmations, agenda, weather/AQI, and precipitation radar"
+    DESCRIPTION = "Affirmations, weather/AQI, and precipitation radar"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
         img = Image.new("L", (width, height), 255)
@@ -38,28 +38,24 @@ class DashboardModule(BaseModule):
         mid_x = width // 2
         mid_y = height // 2
 
-        # Divider lines
+        # Vertical divider (full height)
         draw.line([(mid_x, 10), (mid_x, height - 10)], fill=180, width=1)
-        draw.line([(10, mid_y), (width - 10, mid_y)], fill=180, width=1)
+        # Horizontal divider (left side only)
+        draw.line([(10, mid_y), (mid_x - 10, mid_y)], fill=180, width=1)
 
         # Top-left: Daily affirmation
         affirmation = self._fetch_affirmation()
         font_size_name = settings.get("message_font", "medium")
         self._draw_message(draw, 0, 0, mid_x, mid_y, affirmation, font_size_name, fonts)
 
-        # Top-right: Today's agenda
-        tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
-        agenda_events = self._fetch_agenda(settings, tz)
-        self._draw_agenda(draw, mid_x, 0, width, mid_y, agenda_events, tz, fonts)
-
         # Bottom-left: Weather + AQI
         weather = self._fetch_weather(settings.get("weather_location", ""))
         aqi = self._fetch_aqi(settings.get("latitude", ""), settings.get("longitude", ""))
         self._draw_weather_aqi(draw, 0, mid_y, mid_x, height, weather, aqi, fonts)
 
-        # Bottom-right: Precipitation radar
+        # Right side (full height): Precipitation radar
         radar_img = self._fetch_radar(settings.get("latitude", ""), settings.get("longitude", ""))
-        self._draw_radar(img, draw, mid_x, mid_y, width, height, radar_img, fonts)
+        self._draw_radar(img, draw, mid_x, 0, width, height, radar_img, fonts)
 
         return img
 
@@ -130,149 +126,6 @@ class DashboardModule(BaseModule):
         for i, line in enumerate(lines):
             lw = font.getlength(line)
             draw.text((cx - lw // 2, start_y + i * line_h), line, fill=0, font=font)
-
-    # ── Agenda (top-right) ───────────────────────────────────────────
-
-    def _fetch_agenda(self, settings: dict, tz) -> list:
-        """Fetch today's remaining events (or tomorrow's if evening) from ICS."""
-        cal_settings = settings.get("_calendar_settings", {})
-        ics_url = cal_settings.get("ics_url", "")
-        if not ics_url:
-            return []
-
-        try:
-            import requests
-            from icalendar import Calendar
-
-            now = datetime.now(tz)
-            hour = now.hour
-
-            # After 20:00, show tomorrow's events instead
-            if hour >= 20:
-                day_start = datetime.combine(
-                    (now + timedelta(days=1)).date(), datetime.min.time(), tzinfo=tz
-                )
-                day_end = day_start + timedelta(days=1)
-            else:
-                day_start = now
-                day_end = datetime.combine(
-                    now.date() + timedelta(days=1), datetime.min.time(), tzinfo=tz
-                )
-
-            response = requests.get(ics_url, timeout=15)
-            response.raise_for_status()
-            cal = Calendar.from_ical(response.text)
-
-            events = []
-            for component in cal.walk():
-                if component.name != "VEVENT":
-                    continue
-
-                dtstart = component.get("dtstart")
-                if dtstart is None:
-                    continue
-                dt = dtstart.dt
-
-                if isinstance(dt, datetime):
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=tz)
-                    else:
-                        dt = dt.astimezone(tz)
-                    all_day = False
-                else:
-                    dt = datetime.combine(dt, datetime.min.time(), tzinfo=tz)
-                    all_day = True
-
-                if dt >= day_start and dt < day_end:
-                    events.append({
-                        "summary": str(component.get("summary", "Untitled")),
-                        "start": dt,
-                        "all_day": all_day,
-                    })
-
-            events.sort(key=lambda e: (0 if not e["all_day"] else -1, e["start"]))
-            return events
-
-        except ImportError:
-            logger.error("Install icalendar: pip install icalendar requests")
-            return []
-        except Exception as e:
-            logger.error(f"Agenda fetch failed: {e}")
-            return []
-
-    def _draw_agenda(self, draw, x1, y1, x2, y2, events, tz, fonts):
-        pad = 15
-        x = x1 + pad
-        max_x = x2 - pad
-        w = max_x - x
-        y = y1 + pad
-
-        now = datetime.now(tz)
-        is_tomorrow = now.hour >= 20
-
-        # Header
-        if is_tomorrow:
-            header = "Tomorrow"
-        else:
-            header = "Today"
-        draw.text((x, y), header, fill=0, font=fonts["lg"])
-
-        # Date next to header
-        target_date = (now + timedelta(days=1)) if is_tomorrow else now
-        date_str = target_date.strftime("%a, %b %d")
-        dw = fonts["sm"].getlength(date_str)
-        draw.text((max_x - dw, y + 6), date_str, fill=100, font=fonts["sm"])
-        y += 36
-
-        # Separator
-        draw.line([(x, y), (max_x, y)], fill=180, width=1)
-        y += 8
-
-        if not events:
-            cy = (y + y2 - pad) // 2
-            msg = "No events"
-            mw = fonts["md"].getlength(msg)
-            draw.text(((x + max_x) // 2 - mw // 2, cy - 10), msg, fill=140, font=fonts["md"])
-            return
-
-        row_h = 28
-        max_y = y2 - pad
-
-        for event in events:
-            if y + row_h > max_y:
-                draw.text((x, y), "...", fill=100, font=fonts["sm"])
-                break
-
-            # Time column
-            if event["all_day"]:
-                time_str = "All day"
-            else:
-                time_str = event["start"].strftime("%H:%M")
-            time_w = fonts["sm"].getlength(time_str)
-
-            # Check if event is currently happening or already past
-            is_past = not is_tomorrow and not event["all_day"] and event["start"] < now
-            fill = 160 if is_past else 0
-            time_fill = 160 if is_past else 80
-
-            draw.text((x, y), time_str, fill=time_fill, font=fonts["sm"])
-
-            # Event title
-            title_x = x + 60
-            title = event["summary"]
-            max_title_w = max_x - title_x
-            if fonts["md"].getlength(title) > max_title_w:
-                while fonts["md"].getlength(title + "..") > max_title_w and len(title) > 1:
-                    title = title[:-1]
-                title += ".."
-            draw.text((title_x, y - 2), title, fill=fill, font=fonts["md"])
-
-            # Strikethrough for past events
-            if is_past:
-                tw = fonts["md"].getlength(title)
-                draw.line([(title_x, y + 7), (title_x + tw, y + 7)], fill=160, width=1)
-
-            y += row_h
 
     # ── Weather + AQI (bottom-left) ──────────────────────────────────
 
