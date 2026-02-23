@@ -9,4 +9,5 @@ uploads/*
 *.log
 .env
 google_token.json
+fitbit_token.json
 habits.json

@@ -105,6 +105,17 @@ def create_app(config, module_registry, scheduler):
         habits_settings["habitica_api_token"] = hab_token
         config.set(habits_settings, "modules", "habits")
 
+        # Fitbit credentials
+        fb_id = request.form.get("fitbit_client_id", "").strip()
+        fb_secret = request.form.get("fitbit_client_secret", "").strip()
+        fb_redirect = request.form.get("fitbit_redirect_uri", "").strip()
+        if fb_id:
+            config.set(fb_id, "fitbit", "client_id")
+        if fb_secret:
+            config.set(fb_secret, "fitbit", "client_secret")
+        if fb_redirect:
+            config.set(fb_redirect, "fitbit", "redirect_uri")
+
         config.save()
         return redirect(url_for("index"))
 
@@ -129,6 +140,9 @@ def create_app(config, module_registry, scheduler):
         extra = {}
         if name == "tasks":
             token_path = Path(__file__).parent.parent / "google_token.json"
+            extra["authorized"] = token_path.exists()
+        if name == "fitness":
+            token_path = Path(__file__).parent.parent / "fitbit_token.json"
             extra["authorized"] = token_path.exists()
 
         return render_template(
@@ -164,6 +178,9 @@ def create_app(config, module_registry, scheduler):
         settings["_timezone"] = config.timezone
         if name == "tasks":
             settings["_habitica_settings"] = config.module_settings("habits")
+        if name == "fitness":
+            settings["_fitbit_client_id"] = config.get("fitbit", "client_id", default="")
+            settings["_fitbit_client_secret"] = config.get("fitbit", "client_secret", default="")
 
         try:
             image = module.render(config.display_width, config.display_height, settings)
@@ -326,6 +343,92 @@ def create_app(config, module_registry, scheduler):
             })
         except Exception as e:
             logger.error(f"Failed to fetch task lists: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    # ---- Fitbit OAuth routes for Fitness module ----
+
+    @app.route("/oauth/fitbit/auth_url")
+    def oauth_fitbit_auth_url():
+        """Return JSON with the Fitbit authorization URL."""
+        import urllib.parse as _urlparse
+
+        client_id = config.get("fitbit", "client_id", default="")
+        redirect_uri = config.get(
+            "fitbit", "redirect_uri",
+            default="https://raspberrypi:8080/oauth/fitbit/callback",
+        )
+
+        if not client_id:
+            return jsonify({"error": "Set Fitbit credentials in Permissions first"}), 400
+
+        params = _urlparse.urlencode({
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": "activity heartrate weight profile",
+            "expires_in": "604800",
+        })
+        url = f"https://www.fitbit.com/oauth2/authorize?{params}"
+        return jsonify({"url": url})
+
+    @app.route("/oauth/fitbit/exchange", methods=["POST"])
+    def oauth_fitbit_exchange():
+        """Exchange authorization code for access + refresh tokens."""
+        import base64
+        import json as json_mod
+        import urllib.request as _urlreq
+        import urllib.parse as _urlparse
+        import urllib.error as _urlerr
+        import time
+
+        code = request.form.get("code", "").strip()
+        if not code:
+            return jsonify({"error": "No code provided"}), 400
+
+        client_id = config.get("fitbit", "client_id", default="")
+        client_secret = config.get("fitbit", "client_secret", default="")
+        redirect_uri = config.get(
+            "fitbit", "redirect_uri",
+            default="https://raspberrypi:8080/oauth/fitbit/callback",
+        )
+
+        if not client_id or not client_secret:
+            return jsonify({"error": "Fitbit credentials not configured"}), 400
+
+        auth_header = base64.b64encode(
+            f"{client_id}:{client_secret}".encode()
+        ).decode()
+        data = _urlparse.urlencode({
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }).encode()
+
+        req = _urlreq.Request(
+            "https://api.fitbit.com/oauth2/token",
+            data=data,
+            headers={
+                "Authorization": f"Basic {auth_header}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+
+        try:
+            with _urlreq.urlopen(req, timeout=15) as resp:
+                token_data = json_mod.loads(resp.read())
+
+            token_data["expires_at"] = time.time() + token_data.get("expires_in", 28800)
+            token_path = Path(__file__).parent.parent / "fitbit_token.json"
+            token_path.write_text(json_mod.dumps(token_data, indent=2))
+
+            logger.info("Fitbit authorized successfully")
+            return jsonify({"status": "ok"})
+        except _urlerr.HTTPError as e:
+            error_body = e.read().decode()
+            logger.error(f"Fitbit token exchange failed: {e.code} {error_body}")
+            return jsonify({"error": f"Fitbit returned {e.code}: {error_body}"}), 400
+        except Exception as e:
+            logger.error(f"Fitbit token exchange error: {e}")
             return jsonify({"error": str(e)}), 500
 
     return app

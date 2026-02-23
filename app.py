@@ -14,6 +14,7 @@ from modules.calendar_mod.calendar_mod import CalendarModule
 from modules.tasks.tasks import TasksModule
 from modules.dashboard.dashboard import DashboardModule
 from modules.habits.habits import HabitsModule
+from modules.fitness.fitness import FitnessModule
 
 MODULE_REGISTRY = {
     PhotosModule.NAME: PhotosModule(),
@@ -21,6 +22,7 @@ MODULE_REGISTRY = {
     TasksModule.NAME: TasksModule(),
     DashboardModule.NAME: DashboardModule(),
     HabitsModule.NAME: HabitsModule(),
+    FitnessModule.NAME: FitnessModule(),
 }
 # ============================================================
 

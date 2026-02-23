@@ -26,7 +26,9 @@ class Renderer:
         settings["_timezone"] = self.config.timezone
         if module_name == "tasks":
             settings["_habitica_settings"] = self.config.module_settings("habits")
-
+        if module_name == "fitness":
+            settings["_fitbit_client_id"] = self.config.get("fitbit", "client_id", default="")
+            settings["_fitbit_client_secret"] = self.config.get("fitbit", "client_secret", default="")
 
         w = self.config.display_width
         h = self.config.display_height

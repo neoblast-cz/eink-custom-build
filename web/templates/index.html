@@ -96,6 +96,27 @@
                value="{{ habitica_settings.habitica_api_token | default('') }}"
                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
 
+        <hr>
+
+        <h3>Fitbit</h3>
+        <p class="hint">Used by the Fitness module. Register a "Personal" app at
+          <a href="https://dev.fitbit.com/apps/new" target="_blank">dev.fitbit.com</a>.</p>
+
+        <label for="fitbit_client_id">Client ID</label>
+        <input type="text" id="fitbit_client_id" name="fitbit_client_id"
+               value="{{ config.get('fitbit', 'client_id', default='') }}"
+               placeholder="23V3CR">
+
+        <label for="fitbit_client_secret">Client Secret</label>
+        <input type="password" id="fitbit_client_secret" name="fitbit_client_secret"
+               value="{{ config.get('fitbit', 'client_secret', default='') }}"
+               placeholder="d2e34f4e...">
+
+        <label for="fitbit_redirect_uri">Redirect URI</label>
+        <input type="text" id="fitbit_redirect_uri" name="fitbit_redirect_uri"
+               value="{{ config.get('fitbit', 'redirect_uri', default='https://raspberrypi:8080/oauth/fitbit/callback') }}"
+               placeholder="https://raspberrypi:8080/oauth/fitbit/callback">
+
         <div class="form-actions">
           <button type="submit" class="btn-primary">Save Permissions</button>
         </div>

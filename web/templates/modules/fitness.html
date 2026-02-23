@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Fitness Settings{% endblock %}
+{% block content %}
+<h2>Configure: Fitness</h2>
+
+<div class="settings-form">
+  <form method="POST">
+    <label for="weight_unit">Weight Unit</label>
+    <select id="weight_unit" name="weight_unit">
+      <option value="kg" {{ 'selected' if settings.weight_unit == 'kg' or not settings.weight_unit else '' }}>Kilograms (kg)</option>
+      <option value="lbs" {{ 'selected' if settings.weight_unit == 'lbs' else '' }}>Pounds (lbs)</option>
+    </select>
+
+    <label for="step_goal">Daily Step Goal</label>
+    <input type="number" id="step_goal" name="step_goal"
+           value="{{ settings.step_goal | default(10000) }}" min="1000" max="100000">
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Save Settings</button>
+      <a href="/" class="btn-secondary">Cancel</a>
+    </div>
+  </form>
+
+  <hr style="border-color: #444; margin: 1.5rem 0;">
+
+  <h3>Fitbit Authorization</h3>
+  <p class="hint">Fitbit credentials are configured in <a href="/">Permissions</a> on the main page.</p>
+
+  {% if authorized %}
+    <p style="color: #6f6;">Authorized with Fitbit</p>
+    <button class="btn-secondary" onclick="startFitbitAuth()">Re-authorize</button>
+  {% else %}
+    <p class="hint">Since the Pi serves HTTP but Fitbit requires HTTPS redirects,
+       you need to manually copy a code from your browser after approving.</p>
+  {% endif %}
+
+  <div id="authSection" {% if authorized %}style="display:none;"{% endif %}>
+    <button class="btn-primary" onclick="startFitbitAuth()" style="margin-top: 0.5rem;">
+      Step 1: Open Fitbit Authorization
+    </button>
+
+    <div id="codeSection" style="display: none; margin-top: 1rem;">
+      <p class="hint">After approving on Fitbit, your browser will show an error page
+         (because of HTTPS). Look at the URL bar &mdash; find <code>code=XXXXX</code> and
+         copy everything after <code>code=</code> (up to the next <code>&amp;</code> if any).</p>
+      <input type="text" id="fitbit_code" placeholder="Paste authorization code here..."
+             style="width: 100%; padding: 8px; margin: 0.5rem 0; background: #333; color: #eee; border: 1px solid #555; border-radius: 4px;">
+      <button class="btn-primary" onclick="exchangeCode()">Step 2: Submit Code</button>
+      <p id="code-status" class="hint"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+function startFitbitAuth() {
+  fetch('/oauth/fitbit/auth_url')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.url) {
+        window.open(data.url, '_blank');
+        document.getElementById('authSection').style.display = 'block';
+        document.getElementById('codeSection').style.display = 'block';
+      } else {
+        alert('Error: ' + (data.error || 'Set Fitbit credentials in Permissions first'));
+      }
+    });
+}
+
+function exchangeCode() {
+  var code = document.getElementById('fitbit_code').value.trim();
+  var status = document.getElementById('code-status');
+  if (!code) { status.textContent = 'Please paste the code first.'; return; }
+
+  status.textContent = 'Exchanging code...';
+  fetch('/oauth/fitbit/exchange', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'code=' + encodeURIComponent(code)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.status === 'ok') {
+      status.textContent = 'Authorized successfully!';
+      status.style.color = '#6f6';
+      setTimeout(function() { location.reload(); }, 1500);
+    } else {
+      status.textContent = 'Error: ' + (data.error || 'Unknown error');
+    }
+  })
+  .catch(function() { status.textContent = 'Request failed.'; });
+}
+</script>
+{% endblock %}
