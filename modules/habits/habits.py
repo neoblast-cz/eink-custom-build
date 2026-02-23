@@ -58,7 +58,17 @@ class HabitsModule(BaseModule):
 
             for daily in dailies:
                 name = daily["text"]
-                habits.append({"name": name})
+                # Store created date to cap percentage calculations
+                created_at = daily.get("createdAt", "")
+                created_date = None
+                if created_at:
+                    try:
+                        created_date = datetime.fromisoformat(
+                            created_at.replace("Z", "+00:00")
+                        ).strftime("%Y-%m-%d")
+                    except (ValueError, TypeError):
+                        pass
+                habits.append({"name": name, "created": created_date})
 
                 # Process history entries
                 for entry in daily.get("history", []):
@@ -85,12 +95,17 @@ class HabitsModule(BaseModule):
             logger.error(f"Habitica fetch failed: {e}")
             return {"habits": [], "log": {}}
 
-    def _calc_percentage(self, log: dict, habit_name: str, today, days: int) -> int | None:
-        """Calculate completion percentage, excluding today (starts from yesterday)."""
+    def _calc_percentage(self, log: dict, habit_name: str, today, days: int,
+                         created_date: str | None = None) -> int | None:
+        """Calculate completion percentage, excluding today (starts from yesterday).
+        Only counts days on or after the habit's created date."""
         done = 0
         total = 0
         for i in range(1, days + 1):  # start from 1 to skip today
             date_str = (today - timedelta(days=i)).isoformat()
+            # Skip days before the habit was created
+            if created_date and date_str < created_date:
+                continue
             entry = log.get(date_str, {})
             if habit_name in entry:
                 total += 1
@@ -202,6 +217,7 @@ class HabitsModule(BaseModule):
 
         for habit_info in habits:
             habit_name = habit_info["name"]
+            created_date = habit_info.get("created")
 
             # Name (truncate if needed)
             display_name = habit_name
@@ -234,7 +250,7 @@ class HabitsModule(BaseModule):
                 (30, col_30d, overall_30d),
                 (365, col_1y, overall_1y),
             ]:
-                pct = self._calc_percentage(log, habit_name, today, days)
+                pct = self._calc_percentage(log, habit_name, today, days, created_date)
                 if pct is not None:
                     overall_list.append(pct)
                     pct_str = f"{pct}%"
