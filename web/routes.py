@@ -382,6 +382,10 @@ def create_app(config, module_registry, scheduler):
         import time
 
         code = request.form.get("code", "").strip()
+        # Handle pasted full URL or code with fragment suffix
+        if "code=" in code:
+            code = code.split("code=")[-1]
+        code = code.split("#")[0].split("&")[0].strip()
         if not code:
             return jsonify({"error": "No code provided"}), 400
 

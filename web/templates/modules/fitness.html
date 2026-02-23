@@ -41,8 +41,8 @@
 
     <div id="codeSection" style="display: none; margin-top: 1rem;">
       <p class="hint">After approving on Fitbit, your browser will show an error page
-         (because of HTTPS). Look at the URL bar &mdash; find <code>code=XXXXX</code> and
-         copy everything after <code>code=</code> (up to the next <code>&amp;</code> if any).</p>
+         (because of HTTPS). Copy the entire URL from the address bar and paste it below
+         (or just the code part &mdash; either works).</p>
       <input type="text" id="fitbit_code" placeholder="Paste authorization code here..."
              style="width: 100%; padding: 8px; margin: 0.5rem 0; background: #333; color: #eee; border: 1px solid #555; border-radius: 4px;">
       <button class="btn-primary" onclick="exchangeCode()">Step 2: Submit Code</button>
@@ -69,6 +69,9 @@ function startFitbitAuth() {
 function exchangeCode() {
   var code = document.getElementById('fitbit_code').value.trim();
   var status = document.getElementById('code-status');
+  // Clean up: extract code from full URL or strip #_=_ fragment
+  if (code.indexOf('code=') !== -1) { code = code.split('code=').pop(); }
+  code = code.split('#')[0].split('&')[0].trim();
   if (!code) { status.textContent = 'Please paste the code first.'; return; }
 
   status.textContent = 'Exchanging code...';
@@ -87,7 +90,7 @@ function exchangeCode() {
       status.textContent = 'Error: ' + (data.error || 'Unknown error');
     }
   })
-  .catch(function() { status.textContent = 'Request failed.'; });
+  .catch(function(e) { status.textContent = 'Request failed: ' + e.message; });
 }
 </script>
 {% endblock %}
