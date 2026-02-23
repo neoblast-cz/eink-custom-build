@@ -98,7 +98,8 @@ class HabitsModule(BaseModule):
     def _calc_percentage(self, log: dict, habit_name: str, today, days: int,
                          created_date: str | None = None) -> int | None:
         """Calculate completion percentage, excluding today (starts from yesterday).
-        Only counts days on or after the habit's created date."""
+        Only counts days that have actual log data for this habit — days with
+        no Habitica history entry are skipped (API doesn't return full history)."""
         done = 0
         total = 0
         for i in range(1, days + 1):  # start from 1 to skip today
@@ -111,8 +112,8 @@ class HabitsModule(BaseModule):
                 total += 1
                 if entry[habit_name]:
                     done += 1
-            else:
-                total += 1  # count missing as not done
+            # Days with no log entry are skipped — Habitica API
+            # doesn't return complete history for all days
         if total == 0:
             return None
         return round(done / total * 100)
