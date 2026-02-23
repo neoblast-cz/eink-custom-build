@@ -282,11 +282,12 @@ class HabitsModule(BaseModule):
                 draw.text((col_x + (pct_col_w - pw) // 2, y + (row_h - 14) // 2),
                            pct_str, fill=fill, font=fonts["sm"])
 
-            # Current streak
+            # Current streak as percentage of 60 days
             streak = self._calc_streak(log, habit_name, today)
-            streak_str = str(streak)
+            streak_pct = min(round(streak / 60 * 100), 100)
+            streak_str = f"{streak_pct}%"
             sw = fonts["sm"].getlength(streak_str)
-            streak_fill = 0 if streak >= 7 else 80 if streak >= 3 else 160
+            streak_fill = max(0, 160 - streak_pct)
             draw.text((col_streak + (pct_col_w - sw) // 2, y + (row_h - 14) // 2),
                        streak_str, fill=streak_fill, font=fonts["sm"])
 
