@@ -68,7 +68,8 @@ class HabitsModule(BaseModule):
                         ).strftime("%Y-%m-%d")
                     except (ValueError, TypeError):
                         pass
-                habits.append({"name": name, "created": created_date})
+                streak = daily.get("streak", 0)
+                habits.append({"name": name, "created": created_date, "streak": streak})
 
                 # Process history entries
                 for entry in daily.get("history", []):
@@ -117,20 +118,6 @@ class HabitsModule(BaseModule):
         if total == 0:
             return None
         return round(done / total * 100)
-
-    def _calc_streak(self, log: dict, habit_name: str, today) -> int:
-        """Count consecutive completed days going back from yesterday."""
-        streak = 0
-        for i in range(1, 366):  # check up to a year back
-            date_str = (today - timedelta(days=i)).isoformat()
-            entry = log.get(date_str, {})
-            if habit_name not in entry:
-                continue  # skip days with no data (API gaps)
-            if entry[habit_name]:
-                streak += 1
-            else:
-                break  # first missed day ends the streak
-        return streak
 
     def _load_fonts(self):
         font_paths = [
@@ -282,12 +269,11 @@ class HabitsModule(BaseModule):
                 draw.text((col_x + (pct_col_w - pw) // 2, y + (row_h - 14) // 2),
                            pct_str, fill=fill, font=fonts["sm"])
 
-            # Current streak as percentage of 60 days
-            streak = self._calc_streak(log, habit_name, today)
-            streak_pct = min(round(streak / 60 * 100), 100)
-            streak_str = f"{streak_pct}%"
+            # Current streak from Habitica API
+            streak = habit_info.get("streak", 0)
+            streak_str = str(streak)
             sw = fonts["sm"].getlength(streak_str)
-            streak_fill = max(0, 160 - streak_pct)
+            streak_fill = 0 if streak >= 30 else 80 if streak >= 7 else 160
             draw.text((col_streak + (pct_col_w - sw) // 2, y + (row_h - 14) // 2),
                        streak_str, fill=streak_fill, font=fonts["sm"])
 
