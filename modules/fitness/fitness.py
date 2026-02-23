@@ -6,7 +6,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image, ImageDraw, ImageFont
 from modules.base import BaseModule
 
@@ -105,17 +105,17 @@ class FitnessModule(BaseModule):
     def _api_get(self, url: str, access_token: str) -> dict:
         req = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {access_token}",
-            "Accept-Language": "en_US",
-            "Accept-Locale": "en_US",
         })
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
 
     def _fetch_time_series(self, resource: str, token: str) -> list:
-        """Fetch 7-day time series for steps, distance, or calories."""
+        """Fetch 15-day time series for steps, distance, or calories."""
         try:
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
             data = self._api_get(
-                f"{FITBIT_API}/1/user/-/activities/{resource}/date/today/7d.json",
+                f"{FITBIT_API}/1/user/-/activities/{resource}/date/{start}/{end}.json",
                 token,
             )
             key = f"activities-{resource}"
@@ -129,16 +129,38 @@ class FitnessModule(BaseModule):
             return []
 
     def _fetch_weight(self, token: str) -> list:
-        """Fetch weight log entries for the last month."""
+        """Fetch weight log entries for the last 2 years (in 30-day chunks)."""
         try:
-            data = self._api_get(
-                f"{FITBIT_API}/1/user/-/body/log/weight/date/today/1m.json", token
-            )
-            entries = data.get("weight", [])
-            return [
-                {"date": e.get("date", ""), "value": e.get("weight", 0)}
-                for e in entries
-            ]
+            all_entries = []
+            end = datetime.now()
+            empty_streak = 0
+            for i in range(24):  # up to 24 months back
+                period_end = end - timedelta(days=30 * i)
+                period_start = period_end - timedelta(days=30)
+                url = (
+                    f"{FITBIT_API}/1/user/-/body/log/weight/date/"
+                    f"{period_start.strftime('%Y-%m-%d')}/{period_end.strftime('%Y-%m-%d')}.json"
+                )
+                try:
+                    data = self._api_get(url, token)
+                    entries = data.get("weight", [])
+                    if entries:
+                        all_entries.extend(entries)
+                        empty_streak = 0
+                    else:
+                        empty_streak += 1
+                        if empty_streak >= 3:
+                            break  # 3 consecutive empty months = no older data
+                except Exception:
+                    break
+            # Deduplicate by date and sort
+            seen = {}
+            for e in all_entries:
+                d = e.get("date", "")
+                if d not in seen:
+                    seen[d] = e.get("weight", 0)
+            sorted_dates = sorted(seen.keys())
+            return [{"date": d, "value": seen[d]} for d in sorted_dates]
         except Exception as e:
             logger.error(f"Fitbit weight fetch failed: {e}")
             return []
@@ -236,13 +258,10 @@ class FitnessModule(BaseModule):
     def _draw_bar_chart(self, draw, x, y, w, h, data, title, fonts,
                         goal=None, fmt_int=False, fmt_float=False):
         pad = 8
-        cx = x + w // 2
 
-        # Title
-        tw = fonts["sm"].getlength(title)
-        draw.text((cx - tw // 2, y + 4), title, fill=60, font=fonts["sm"])
+        # Title on the left, today's value on the right
+        draw.text((x + pad, y + 4), title, fill=60, font=fonts["sm"])
 
-        # Today's value as big number
         today_val = data[-1]["value"] if data else 0
         if fmt_int:
             val_str = f"{int(today_val):,}"
@@ -251,19 +270,20 @@ class FitnessModule(BaseModule):
         else:
             val_str = f"{today_val}"
         vw = fonts["xl"].getlength(val_str)
-        draw.text((cx - vw // 2, y + 20), val_str, fill=0, font=fonts["xl"])
+        draw.text((x + w - pad - vw, y + 2), val_str, fill=0, font=fonts["xl"])
 
         if not data:
+            cx = x + w // 2
             msg = "No data"
             mw = fonts["sm"].getlength(msg)
             draw.text((cx - mw // 2, y + h // 2), msg, fill=140, font=fonts["sm"])
             return
 
-        # Chart area
-        chart_left = x + pad + 30  # room for y-axis labels
+        # Chart area — reduced y-axis label space for 15 bars
+        chart_left = x + pad + 24
         chart_right = x + w - pad
-        chart_top = y + 56
-        chart_bottom = y + h - 18
+        chart_top = y + 38
+        chart_bottom = y + h - 16
         chart_w = chart_right - chart_left
         chart_h = chart_bottom - chart_top
 
@@ -277,14 +297,16 @@ class FitnessModule(BaseModule):
         if max_val == 0:
             max_val = 1
 
-        # Y-axis labels
+        # Y-axis labels (compact)
         if fmt_float:
             draw.text((x + 2, chart_top - 2), f"{max_val:.1f}", fill=150, font=fonts["xs"])
-            draw.text((x + 2, chart_bottom - 8), "0", fill=150, font=fonts["xs"])
         else:
-            top_label = f"{int(max_val):,}" if max_val >= 1000 else f"{int(max_val)}"
+            if max_val >= 1000:
+                top_label = f"{int(max_val) // 1000}k"
+            else:
+                top_label = f"{int(max_val)}"
             draw.text((x + 2, chart_top - 2), top_label, fill=150, font=fonts["xs"])
-            draw.text((x + 2, chart_bottom - 8), "0", fill=150, font=fonts["xs"])
+        draw.text((x + 2, chart_bottom - 8), "0", fill=150, font=fonts["xs"])
 
         # Axes
         draw.line([(chart_left, chart_top), (chart_left, chart_bottom)], fill=180, width=1)
@@ -294,7 +316,6 @@ class FitnessModule(BaseModule):
         if goal and goal > 0:
             goal_y = chart_bottom - int((goal / max_val) * chart_h)
             goal_y = max(chart_top, min(chart_bottom, goal_y))
-            # Draw dashed line
             dash_len = 6
             gap_len = 4
             lx = chart_left
@@ -302,87 +323,87 @@ class FitnessModule(BaseModule):
                 end = min(lx + dash_len, chart_right)
                 draw.line([(lx, goal_y), (end, goal_y)], fill=100, width=1)
                 lx = end + gap_len
-            # Goal label
             gl = f"goal: {goal:,}"
             glw = fonts["xs"].getlength(gl)
             draw.text((chart_right - glw, goal_y - 11), gl, fill=100, font=fonts["xs"])
 
-        # Bars
+        # Bars — tight spacing for 15 bars
         n = len(values)
-        total_bar_space = chart_w - 4
-        bar_w = max(total_bar_space // n - 4, 6)
-        spacing = (total_bar_space - bar_w * n) // max(n, 1)
+        gap = 2
+        bar_w = max((chart_w - gap * (n + 1)) // n, 3)
+        total_used = bar_w * n + gap * (n + 1)
+        offset = chart_left + (chart_w - total_used) + gap  # right-align bars
 
         for i, val in enumerate(values):
-            bx = chart_left + 2 + i * (bar_w + spacing)
+            bx = offset + i * (bar_w + gap)
             bar_h_px = int((val / max_val) * chart_h) if max_val > 0 else 0
             bar_h_px = max(bar_h_px, 1)
 
-            # Bar fill: today (last bar) is darker
             fill = 40 if i == n - 1 else 120
             draw.rectangle(
                 [bx, chart_bottom - bar_h_px, bx + bar_w, chart_bottom],
                 fill=fill,
             )
 
-            # Day label below bar
+        # Day labels — only show every few days to avoid overlap
+        label_every = max(1, n // 5)  # ~5 labels across 15 bars
+        for i in range(n):
+            if i % label_every != 0 and i != n - 1:
+                continue
             date_str = data[i].get("date", "")
             if date_str:
                 try:
                     dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    day_label = dt.strftime("%a")[0]  # M, T, W, ...
+                    day_label = dt.strftime("%d")
                 except ValueError:
                     day_label = ""
+                bx = offset + i * (bar_w + gap)
                 dlw = fonts["xs"].getlength(day_label)
                 draw.text(
-                    (bx + bar_w // 2 - dlw // 2, chart_bottom + 3),
+                    (bx + bar_w // 2 - dlw // 2, chart_bottom + 2),
                     day_label, fill=140, font=fonts["xs"],
                 )
 
+    def _convert_weight(self, value, unit):
+        """Convert weight from metric (kg, API default) to display unit."""
+        if unit == "lbs":
+            return value * 2.20462
+        return value
+
     def _draw_weight_chart(self, draw, x, y, w, h, data, unit, fonts):
         pad = 8
-        cx = x + w // 2
 
-        title = "Weight"
-        tw = fonts["sm"].getlength(title)
-        draw.text((cx - tw // 2, y + 4), title, fill=60, font=fonts["sm"])
+        # Title left, value right
+        draw.text((x + pad, y + 4), "Weight", fill=60, font=fonts["sm"])
 
         if not data:
+            cx = x + w // 2
             msg = "No weight data"
             mw = fonts["sm"].getlength(msg)
             draw.text((cx - mw // 2, y + h // 2), msg, fill=140, font=fonts["sm"])
             return
 
-        # Latest value
-        latest = data[-1]["value"]
-        if unit == "lbs":
-            display_val = latest * 2.20462
-            unit_str = "lbs"
-        else:
-            display_val = latest
-            unit_str = "kg"
-
-        val_str = f"{display_val:.1f} {unit_str}"
+        latest = self._convert_weight(data[-1]["value"], unit)
+        unit_str = "lbs" if unit == "lbs" else "kg"
+        val_str = f"{latest:.1f} {unit_str}"
         vw = fonts["xl"].getlength(val_str)
-        draw.text((cx - vw // 2, y + 20), val_str, fill=0, font=fonts["xl"])
+        draw.text((x + w - pad - vw, y + 2), val_str, fill=0, font=fonts["xl"])
 
         if len(data) < 2:
             return
 
         # Chart area
-        chart_left = x + pad + 30
+        chart_left = x + pad + 24
         chart_right = x + w - pad
-        chart_top = y + 56
-        chart_bottom = y + h - 18
+        chart_top = y + 38
+        chart_bottom = y + h - 16
         chart_w = chart_right - chart_left
         chart_h = chart_bottom - chart_top
 
         if chart_h < 20 or chart_w < 40:
             return
 
-        weights = [d["value"] for d in data]
-        if unit == "lbs":
-            weights = [wt * 2.20462 for wt in weights]
+        weights = [self._convert_weight(d["value"], unit) for d in data]
 
         min_w = min(weights)
         max_w = max(weights)
