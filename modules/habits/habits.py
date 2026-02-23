@@ -90,7 +90,29 @@ class HabitsModule(BaseModule):
                     log[today_str] = {}
                 log[today_str][name] = daily.get("completed", False)
 
-            return {"habits": habits, "log": log}
+            # Fetch user stats (level, XP)
+            user_stats = {}
+            try:
+                user_url = f"{HABITICA_API}/user?userFields=stats"
+                user_req = urllib.request.Request(user_url, headers={
+                    "x-api-user": user_id,
+                    "x-api-key": api_token,
+                    "x-client": f"{user_id}-EinkPi",
+                    "Content-Type": "application/json",
+                })
+                with urllib.request.urlopen(user_req, timeout=15) as resp:
+                    user_result = json.loads(resp.read())
+                if user_result.get("success"):
+                    stats = user_result["data"].get("stats", {})
+                    user_stats = {
+                        "lvl": stats.get("lvl", 0),
+                        "exp": int(stats.get("exp", 0)),
+                        "toNextLevel": stats.get("toNextLevel", 0),
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to fetch Habitica user stats: {e}")
+
+            return {"habits": habits, "log": log, "user_stats": user_stats}
 
         except Exception as e:
             logger.error(f"Habitica fetch failed: {e}")
@@ -148,6 +170,7 @@ class HabitsModule(BaseModule):
 
         habits = data.get("habits", [])[:max_display]
         log = data.get("log", {})
+        user_stats = data.get("user_stats", {})
         margin = 20
         days_shown = 15
 
@@ -311,5 +334,39 @@ class HabitsModule(BaseModule):
             lw = fonts["sm"].getlength(label)
             draw.text((panel_center - lw // 2, panel_y), label, fill=120, font=fonts["sm"])
             panel_y += 28
+
+        # ---- Level and XP ----
+        if user_stats:
+            lvl = user_stats.get("lvl", 0)
+            exp = user_stats.get("exp", 0)
+            to_next = user_stats.get("toNextLevel", 0)
+
+            panel_y += 5
+            draw.line([(panel_x + 10, panel_y), (panel_x + overall_panel_w - 10, panel_y)],
+                      fill=180, width=1)
+            panel_y += 10
+
+            # Level
+            lvl_str = f"Lv {lvl}"
+            lw = fonts["lg"].getlength(lvl_str)
+            draw.text((panel_center - lw // 2, panel_y), lvl_str, fill=0, font=fonts["lg"])
+            panel_y += 30
+
+            # XP progress bar
+            bar_x = panel_x + 12
+            bar_w = overall_panel_w - 24
+            bar_h = 8
+            progress = exp / to_next if to_next > 0 else 0
+            draw.rectangle([bar_x, panel_y, bar_x + bar_w, panel_y + bar_h],
+                          fill=230, outline=180)
+            if progress > 0:
+                draw.rectangle([bar_x, panel_y, bar_x + int(bar_w * progress), panel_y + bar_h],
+                              fill=80)
+            panel_y += bar_h + 4
+
+            # XP label
+            xp_str = f"{exp}/{to_next} XP"
+            xw = fonts["xs"].getlength(xp_str)
+            draw.text((panel_center - xw // 2, panel_y), xp_str, fill=120, font=fonts["xs"])
 
         return img
