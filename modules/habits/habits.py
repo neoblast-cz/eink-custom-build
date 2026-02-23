@@ -118,6 +118,20 @@ class HabitsModule(BaseModule):
             return None
         return round(done / total * 100)
 
+    def _calc_streak(self, log: dict, habit_name: str, today) -> int:
+        """Count consecutive completed days going back from yesterday."""
+        streak = 0
+        for i in range(1, 366):  # check up to a year back
+            date_str = (today - timedelta(days=i)).isoformat()
+            entry = log.get(date_str, {})
+            if habit_name not in entry:
+                continue  # skip days with no data (API gaps)
+            if entry[habit_name]:
+                streak += 1
+            else:
+                break  # first missed day ends the streak
+        return streak
+
     def _load_fonts(self):
         font_paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -161,10 +175,10 @@ class HabitsModule(BaseModule):
         overall_panel_w = 120
         left_w = width - overall_panel_w
 
-        name_w = 150
+        name_w = 140
         circles_w = days_shown * 22 + 10
-        pct_col_w = 50
-        content_w = name_w + circles_w + pct_col_w * 3
+        pct_col_w = 42
+        content_w = name_w + circles_w + pct_col_w * 4
         x_start = max(margin, (left_w - content_w) // 2)
 
         col_name = x_start
@@ -187,16 +201,21 @@ class HabitsModule(BaseModule):
             draw.text((cx - lw // 2, y + 4), day_label,
                       fill=0 if is_today else 160, font=fonts["xs"])
 
-        # Percentage headers (7d, 30d, 1y)
-        col_1y = col_30d + pct_col_w
-        for label, col_x in [("7d", col_7d), ("30d", col_30d), ("1y", col_1y)]:
+        # Percentage headers (7d, 30d, 60d, streak)
+        col_60d = col_30d + pct_col_w
+        col_streak = col_60d + pct_col_w
+        for label, col_x in [("7d", col_7d), ("30d", col_30d), ("60d", col_60d)]:
             lw = fonts["sm"].getlength(label)
             draw.text((col_x + (pct_col_w - lw) // 2, y + 2), label, fill=100, font=fonts["sm"])
+        # Streak header with flame-like symbol
+        streak_label = "streak"
+        slw = fonts["xs"].getlength(streak_label)
+        draw.text((col_streak + (pct_col_w - slw) // 2, y + 4), streak_label, fill=100, font=fonts["xs"])
 
         y += 32
 
         # Separator
-        draw.line([(x_start, y), (col_1y + pct_col_w, y)], fill=180, width=1)
+        draw.line([(x_start, y), (col_streak + pct_col_w, y)], fill=180, width=1)
         y += 8
 
         # Habit rows
@@ -206,7 +225,7 @@ class HabitsModule(BaseModule):
 
         overall_7d = []
         overall_30d = []
-        overall_1y = []
+        overall_60d = []
 
         # Draw today highlight column (light gray background behind today's circles)
         today_col_idx = days_shown - 1  # today is the last column
@@ -245,11 +264,11 @@ class HabitsModule(BaseModule):
                     draw.ellipse([cx - circle_r, cy - circle_r, cx + circle_r, cy + circle_r],
                                   outline=180, width=1)
 
-            # Per-habit percentages (7d, 30d, 1y) — excludes today
+            # Per-habit percentages (7d, 30d, 60d) — excludes today
             for days, col_x, overall_list in [
                 (7, col_7d, overall_7d),
                 (30, col_30d, overall_30d),
-                (365, col_1y, overall_1y),
+                (60, col_60d, overall_60d),
             ]:
                 pct = self._calc_percentage(log, habit_name, today, days, created_date)
                 if pct is not None:
@@ -263,10 +282,18 @@ class HabitsModule(BaseModule):
                 draw.text((col_x + (pct_col_w - pw) // 2, y + (row_h - 14) // 2),
                            pct_str, fill=fill, font=fonts["sm"])
 
+            # Current streak
+            streak = self._calc_streak(log, habit_name, today)
+            streak_str = str(streak)
+            sw = fonts["sm"].getlength(streak_str)
+            streak_fill = 0 if streak >= 7 else 80 if streak >= 3 else 160
+            draw.text((col_streak + (pct_col_w - sw) // 2, y + (row_h - 14) // 2),
+                       streak_str, fill=streak_fill, font=fonts["sm"])
+
             y += row_h
 
         # Separator below habits
-        draw.line([(x_start, y + 4), (col_1y + pct_col_w, y + 4)], fill=180, width=1)
+        draw.line([(x_start, y + 4), (col_streak + pct_col_w, y + 4)], fill=180, width=1)
 
         # ---- Right panel: Overall percentages in big font ----
         panel_x = left_w
@@ -279,7 +306,7 @@ class HabitsModule(BaseModule):
         draw.text((panel_center - lw // 2, panel_y), label, fill=80, font=fonts["md"])
         panel_y += 35
 
-        for values, label in [(overall_7d, "7d"), (overall_30d, "30d"), (overall_1y, "1y")]:
+        for values, label in [(overall_7d, "7d"), (overall_30d, "30d"), (overall_60d, "60d")]:
             if values:
                 avg = round(sum(values) / len(values))
                 pct_str = f"{avg}%"
