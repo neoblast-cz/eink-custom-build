@@ -115,7 +115,9 @@ class FitnessModule(BaseModule):
             data = self._api_get(
                 f"{FITBIT_API}/1/user/-/activities/date/today.json", token
             )
+            logger.info(f"Fitbit activities keys: {list(data.keys())}")
             summary = data.get("summary", {})
+            logger.info(f"Fitbit summary: steps={summary.get('steps')}, calories={summary.get('caloriesOut')}")
             return {
                 "steps": summary.get("steps", 0),
                 "calories": summary.get("caloriesOut", 0),
@@ -130,8 +132,10 @@ class FitnessModule(BaseModule):
             data = self._api_get(
                 f"{FITBIT_API}/1/user/-/activities/heart/date/today/1d.json", token
             )
+            logger.info(f"Fitbit heart keys: {list(data.keys())}")
             heart_data = data.get("activities-heart", [{}])[0].get("value", {})
             resting = heart_data.get("restingHeartRate", 0)
+            logger.info(f"Fitbit heart: resting={resting}, zones={heart_data.get('heartRateZones', [])}")
             zones = {}
             total_active = 0
             for zone in heart_data.get("heartRateZones", []):
@@ -154,6 +158,7 @@ class FitnessModule(BaseModule):
             data = self._api_get(
                 f"{FITBIT_API}/1/user/-/body/log/weight/date/today/1m.json", token
             )
+            logger.info(f"Fitbit weight raw: {data}")
             entries = data.get("weight", [])
             points = [
                 {"date": e.get("date", ""), "weight": e.get("weight", 0)}

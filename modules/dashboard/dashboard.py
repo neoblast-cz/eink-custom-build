@@ -54,8 +54,8 @@ class DashboardModule(BaseModule):
         self._draw_weather_aqi(draw, 0, mid_y, mid_x, height, weather, aqi, fonts)
 
         # Right side (full height): Precipitation radar
-        radar_img = self._fetch_radar(settings.get("latitude", ""), settings.get("longitude", ""))
-        self._draw_radar(img, draw, mid_x, 0, width, height, radar_img, fonts)
+        radar_img, radar_meta = self._fetch_radar(settings.get("latitude", ""), settings.get("longitude", ""))
+        self._draw_radar(img, draw, mid_x, 0, width, height, radar_img, radar_meta, fonts)
 
         return img
 
@@ -329,7 +329,43 @@ class DashboardModule(BaseModule):
             aw = fonts["xs"].getlength(aqi_text)
             draw.text((cx - aw // 2, bar_y + bar_h + 4), aqi_text, fill=80, font=fonts["xs"])
 
-    # ── Precipitation Radar (bottom-right) ───────────────────────────
+    # ── Precipitation Radar (right side) ──────────────────────────────
+
+    # Major cities for radar anchor points (name, lat, lon)
+    MAJOR_CITIES = [
+        # Europe
+        ("London", 51.51, -0.13), ("Paris", 48.86, 2.35), ("Berlin", 52.52, 13.41),
+        ("Madrid", 40.42, -3.70), ("Rome", 41.90, 12.50), ("Vienna", 48.21, 16.37),
+        ("Prague", 50.08, 14.44), ("Warsaw", 52.23, 21.01), ("Budapest", 47.50, 19.04),
+        ("Munich", 48.14, 11.58), ("Milan", 45.46, 9.19), ("Barcelona", 41.39, 2.17),
+        ("Amsterdam", 52.37, 4.90), ("Brussels", 50.85, 4.35), ("Zurich", 47.38, 8.54),
+        ("Copenhagen", 55.68, 12.57), ("Stockholm", 59.33, 18.07), ("Oslo", 59.91, 10.75),
+        ("Helsinki", 60.17, 24.94), ("Dublin", 53.35, -6.26), ("Lisbon", 38.72, -9.14),
+        ("Athens", 37.98, 23.73), ("Bucharest", 44.43, 26.10), ("Sofia", 42.70, 23.32),
+        ("Belgrade", 44.79, 20.47), ("Zagreb", 45.81, 15.98), ("Bratislava", 48.15, 17.11),
+        ("Ljubljana", 46.06, 14.51), ("Krakow", 50.06, 19.94), ("Hamburg", 53.55, 9.99),
+        ("Frankfurt", 50.11, 8.68), ("Lyon", 45.76, 4.84), ("Marseille", 43.30, 5.37),
+        ("Edinburgh", 55.95, -3.19), ("Manchester", 53.48, -2.24), ("Kyiv", 50.45, 30.52),
+        ("Istanbul", 41.01, 28.98), ("Brno", 49.20, 16.61), ("Dresden", 51.05, 13.74),
+        ("Nuremberg", 49.45, 11.08), ("Gdansk", 54.35, 18.65), ("Vilnius", 54.69, 25.28),
+        ("Riga", 56.95, 24.11), ("Tallinn", 59.44, 24.75), ("Minsk", 53.90, 27.57),
+        # Americas
+        ("New York", 40.71, -74.01), ("Los Angeles", 34.05, -118.24),
+        ("Chicago", 41.88, -87.63), ("Toronto", 43.65, -79.38), ("Mexico City", 19.43, -99.13),
+        ("São Paulo", -23.55, -46.63), ("Buenos Aires", -34.60, -58.38),
+        ("Washington", 38.91, -77.04), ("Miami", 25.76, -80.19), ("Boston", 42.36, -71.06),
+        ("Montreal", 45.50, -73.57), ("Vancouver", 49.28, -123.12),
+        ("San Francisco", 37.77, -122.42), ("Atlanta", 33.75, -84.39),
+        ("Denver", 39.74, -104.99), ("Dallas", 32.78, -96.80),
+        # Asia & Oceania
+        ("Tokyo", 35.68, 139.69), ("Beijing", 39.90, 116.40), ("Shanghai", 31.23, 121.47),
+        ("Seoul", 37.57, 126.98), ("Mumbai", 19.08, 72.88), ("Delhi", 28.61, 77.21),
+        ("Singapore", 1.35, 103.82), ("Bangkok", 13.76, 100.50), ("Dubai", 25.20, 55.27),
+        ("Sydney", -33.87, 151.21), ("Melbourne", -37.81, 144.96), ("Auckland", -36.85, 174.76),
+        # Africa
+        ("Cairo", 30.04, 31.24), ("Johannesburg", -26.20, 28.04),
+        ("Lagos", 6.52, 3.38), ("Nairobi", -1.29, 36.82),
+    ]
 
     def _latlon_to_tile(self, lat, lon, zoom):
         """Convert latitude/longitude to tile x/y at given zoom level."""
@@ -339,9 +375,22 @@ class DashboardModule(BaseModule):
         y = int((1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n)
         return x, y
 
-    def _fetch_radar(self, latitude: str, longitude: str) -> Image.Image | None:
+    def _latlon_to_grid_pixel(self, lat, lon, zoom, center_tile_x, center_tile_y, tile_size=256):
+        """Convert lat/lon to pixel position within the 3x3 tile grid."""
+        lat_rad = math.radians(lat)
+        n = 2 ** zoom
+        # World pixel coordinates
+        world_x = (lon + 180.0) / 360.0 * n * tile_size
+        world_y = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n * tile_size
+        # Grid origin is at tile (center-1, center-1)
+        grid_origin_x = (center_tile_x - 1) * tile_size
+        grid_origin_y = (center_tile_y - 1) * tile_size
+        return world_x - grid_origin_x, world_y - grid_origin_y
+
+    def _fetch_radar(self, latitude: str, longitude: str) -> tuple:
+        """Returns (radar_image, radar_meta) where meta has tile info for city plotting."""
         if not latitude or not longitude:
-            return None
+            return None, {}
         try:
             import requests
             lat = float(latitude)
@@ -354,7 +403,7 @@ class DashboardModule(BaseModule):
 
             radar_frames = maps_data.get("radar", {}).get("past", [])
             if not radar_frames:
-                return None
+                return None, {}
 
             latest = radar_frames[-1]
             path = latest["path"]
@@ -380,13 +429,17 @@ class DashboardModule(BaseModule):
                     except Exception:
                         pass
 
-            return grid
+            meta = {
+                "zoom": zoom, "center_x": center_x, "center_y": center_y,
+                "tile_size": tile_size, "grid_size": tile_size * 3,
+            }
+            return grid, meta
 
         except Exception as e:
             logger.error(f"Radar fetch failed: {e}")
-            return None
+            return None, {}
 
-    def _draw_radar(self, img, draw, x1, y1, x2, y2, radar_img, fonts):
+    def _draw_radar(self, img, draw, x1, y1, x2, y2, radar_img, radar_meta, fonts):
         cx = (x1 + x2) // 2
         cy = (y1 + y2) // 2
         quad_w = x2 - x1
@@ -408,15 +461,11 @@ class DashboardModule(BaseModule):
         radar_resized = radar_img.resize((target_w, target_h), Image.LANCZOS)
 
         # RainViewer tiles: RGBA where alpha=0 means no rain, higher alpha = precipitation
-        # Colors indicate intensity (green=light, yellow=moderate, red=heavy)
         # Convert to grayscale: no rain = white (240), light rain = light gray, heavy = dark
         r_ch, g_ch, b_ch, a_ch = radar_resized.split()
 
-        # Create grayscale background
         radar_bg = Image.new("L", (target_w, target_h), 240)
 
-        # For each pixel: if alpha > threshold, darken based on intensity
-        # Use the RGB brightness + alpha to determine rain intensity
         r_data = list(r_ch.getdata())
         g_data = list(g_ch.getdata())
         b_data = list(b_ch.getdata())
@@ -425,13 +474,9 @@ class DashboardModule(BaseModule):
         result = []
         for i in range(len(a_data)):
             if a_data[i] < 20:
-                result.append(240)  # no rain: light background
+                result.append(240)
             else:
-                # Brightness of the rain color (lower = more intense rain)
                 brightness = (r_data[i] + g_data[i] + b_data[i]) / 3
-                # Map: green (bright, ~170) = light rain -> gray 190
-                #       red (mid, ~130) = moderate -> gray 140
-                #       dark red/purple (dark, ~80) = heavy -> gray 60
                 alpha_factor = min(a_data[i] / 255, 1.0)
                 shade = int(240 - (240 - brightness) * alpha_factor * 0.8)
                 shade = max(40, min(220, shade))
@@ -440,7 +485,67 @@ class DashboardModule(BaseModule):
         radar_bg.putdata(result)
 
         # Paste onto main image
-        img.paste(radar_bg, (x1 + pad, y1 + pad + 14))
+        img_x = x1 + pad
+        img_y = y1 + pad + 14
+        img.paste(radar_bg, (img_x, img_y))
+
+        # Scale factors from 3x3 tile grid to rendered image
+        grid_size = radar_meta.get("grid_size", 768)
+        scale_x = target_w / grid_size
+        scale_y = target_h / grid_size
+        zoom = radar_meta.get("zoom", 6)
+        ctx = radar_meta.get("center_x", 0)
+        cty = radar_meta.get("center_y", 0)
+        tile_size = radar_meta.get("tile_size", 256)
+
+        # Draw city markers
+        if radar_meta:
+            label_rects = []  # track placed labels to avoid overlap
+            for city_name, city_lat, city_lon in self.MAJOR_CITIES:
+                gx, gy = self._latlon_to_grid_pixel(
+                    city_lat, city_lon, zoom, ctx, cty, tile_size
+                )
+                # Check if within visible grid
+                if gx < 0 or gx >= grid_size or gy < 0 or gy >= grid_size:
+                    continue
+
+                # Convert to screen coordinates
+                sx = int(img_x + gx * scale_x)
+                sy = int(img_y + gy * scale_y)
+
+                # Skip if too close to edges
+                if sx < img_x + 5 or sx > img_x + target_w - 5:
+                    continue
+                if sy < img_y + 5 or sy > img_y + target_h - 5:
+                    continue
+
+                # Draw small dot
+                r = 2
+                draw.ellipse([sx - r, sy - r, sx + r, sy + r], fill=60)
+
+                # Draw label (offset to right of dot)
+                lbl = city_name
+                lbl_w = fonts["xs"].getlength(lbl)
+                lbl_x = sx + 5
+                lbl_y = sy - 6
+
+                # If label would go off-screen, place left of dot
+                if lbl_x + lbl_w > img_x + target_w - 2:
+                    lbl_x = sx - lbl_w - 5
+
+                # Check overlap with existing labels
+                lbl_rect = (lbl_x, lbl_y, lbl_x + lbl_w, lbl_y + 12)
+                overlap = False
+                for existing in label_rects:
+                    if (lbl_rect[0] < existing[2] + 4 and lbl_rect[2] > existing[0] - 4 and
+                            lbl_rect[1] < existing[3] + 2 and lbl_rect[3] > existing[1] - 2):
+                        overlap = True
+                        break
+                if overlap:
+                    continue
+
+                label_rects.append(lbl_rect)
+                draw.text((lbl_x, lbl_y), lbl, fill=40, font=fonts["xs"])
 
         # Draw crosshair at center for user's location
         marker_x = x1 + pad + target_w // 2
