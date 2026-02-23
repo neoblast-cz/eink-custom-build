@@ -86,9 +86,10 @@ class HabitsModule(BaseModule):
             return {"habits": [], "log": {}}
 
     def _calc_percentage(self, log: dict, habit_name: str, today, days: int) -> int | None:
+        """Calculate completion percentage, excluding today (starts from yesterday)."""
         done = 0
         total = 0
-        for i in range(days):
+        for i in range(1, days + 1):  # start from 1 to skip today
             date_str = (today - timedelta(days=i)).isoformat()
             entry = log.get(date_str, {})
             if habit_name in entry:
@@ -147,7 +148,7 @@ class HabitsModule(BaseModule):
         name_w = 150
         circles_w = days_shown * 22 + 10
         pct_col_w = 50
-        content_w = name_w + circles_w + pct_col_w * 2
+        content_w = name_w + circles_w + pct_col_w * 3
         x_start = max(margin, (left_w - content_w) // 2)
 
         col_name = x_start
@@ -160,23 +161,26 @@ class HabitsModule(BaseModule):
         # Header
         draw.text((col_name, y), "Habits", fill=0, font=fonts["lg"])
 
-        # Day labels above circles
+        # Day labels above circles (today is bold/darker)
         for i in range(days_shown):
             day = today - timedelta(days=days_shown - 1 - i)
             day_label = str(day.day)
             cx = col_circles + i * 22 + 11
             lw = fonts["xs"].getlength(day_label)
-            draw.text((cx - lw // 2, y + 4), day_label, fill=160, font=fonts["xs"])
+            is_today = (i == days_shown - 1)
+            draw.text((cx - lw // 2, y + 4), day_label,
+                      fill=0 if is_today else 160, font=fonts["xs"])
 
-        # Percentage headers (7d, 30d)
-        for label, col_x in [("7d", col_7d), ("30d", col_30d)]:
+        # Percentage headers (7d, 30d, 1y)
+        col_1y = col_30d + pct_col_w
+        for label, col_x in [("7d", col_7d), ("30d", col_30d), ("1y", col_1y)]:
             lw = fonts["sm"].getlength(label)
             draw.text((col_x + (pct_col_w - lw) // 2, y + 2), label, fill=100, font=fonts["sm"])
 
         y += 32
 
         # Separator
-        draw.line([(x_start, y), (col_30d + pct_col_w, y)], fill=180, width=1)
+        draw.line([(x_start, y), (col_1y + pct_col_w, y)], fill=180, width=1)
         y += 8
 
         # Habit rows
@@ -186,6 +190,15 @@ class HabitsModule(BaseModule):
 
         overall_7d = []
         overall_30d = []
+        overall_1y = []
+
+        # Draw today highlight column (light gray background behind today's circles)
+        today_col_idx = days_shown - 1  # today is the last column
+        today_cx = col_circles + today_col_idx * 22 + 11
+        draw.rectangle(
+            [today_cx - circle_r - 3, y - 2, today_cx + circle_r + 3, y + row_h * len(habits) + 2],
+            fill=235,
+        )
 
         for habit_info in habits:
             habit_name = habit_info["name"]
@@ -198,7 +211,7 @@ class HabitsModule(BaseModule):
                 display_name += ".."
             draw.text((col_name, y + (row_h - 18) // 2), display_name, fill=0, font=fonts["md"])
 
-            # Circles for last 10 days
+            # Circles for last N days
             for i in range(days_shown):
                 day = today - timedelta(days=days_shown - 1 - i)
                 date_str = day.isoformat()
@@ -215,10 +228,11 @@ class HabitsModule(BaseModule):
                     draw.ellipse([cx - circle_r, cy - circle_r, cx + circle_r, cy + circle_r],
                                   outline=180, width=1)
 
-            # Per-habit percentages (7d, 30d)
+            # Per-habit percentages (7d, 30d, 1y) — excludes today
             for days, col_x, overall_list in [
                 (7, col_7d, overall_7d),
                 (30, col_30d, overall_30d),
+                (365, col_1y, overall_1y),
             ]:
                 pct = self._calc_percentage(log, habit_name, today, days)
                 if pct is not None:
@@ -235,7 +249,7 @@ class HabitsModule(BaseModule):
             y += row_h
 
         # Separator below habits
-        draw.line([(x_start, y + 4), (col_30d + pct_col_w, y + 4)], fill=180, width=1)
+        draw.line([(x_start, y + 4), (col_1y + pct_col_w, y + 4)], fill=180, width=1)
 
         # ---- Right panel: Overall percentages in big font ----
         panel_x = left_w
@@ -248,7 +262,7 @@ class HabitsModule(BaseModule):
         draw.text((panel_center - lw // 2, panel_y), label, fill=80, font=fonts["md"])
         panel_y += 35
 
-        for values, label in [(overall_7d, "7d"), (overall_30d, "30d")]:
+        for values, label in [(overall_7d, "7d"), (overall_30d, "30d"), (overall_1y, "1y")]:
             if values:
                 avg = round(sum(values) / len(values))
                 pct_str = f"{avg}%"
@@ -260,11 +274,11 @@ class HabitsModule(BaseModule):
             # Big percentage
             pw = fonts["xl"].getlength(pct_str)
             draw.text((panel_center - pw // 2, panel_y), pct_str, fill=fill, font=fonts["xl"])
-            panel_y += 42
+            panel_y += 38
 
             # Small label below
             lw = fonts["sm"].getlength(label)
             draw.text((panel_center - lw // 2, panel_y), label, fill=120, font=fonts["sm"])
-            panel_y += 35
+            panel_y += 28
 
         return img
