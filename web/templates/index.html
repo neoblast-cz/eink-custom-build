@@ -6,7 +6,7 @@
     <div class="preview-frame">
       <img src="/preview" alt="Display preview" class="display-preview" id="previewImg">
     </div>
-    <button class="btn-primary" id="refreshBtn" onclick="doRefresh()">Refresh Now</button>
+    <button class="btn-primary" id="refreshBtn" onclick="doRefresh()">Push to EinkPi</button>
 
     <!-- Settings toggle -->
     <div class="settings-toggle" onclick="toggleSettings()">
@@ -189,22 +189,22 @@ function doRefresh() {
       .then(data => {
         setTimeout(() => {
           document.getElementById('previewImg').src = '/preview?' + Date.now();
-          btn.textContent = 'Refresh Now';
+          btn.textContent = 'Push to EinkPi';
           btn.disabled = false;
         }, 500);
       })
-      .catch(() => { btn.textContent = 'Refresh Now'; btn.disabled = false; });
+      .catch(() => { btn.textContent = 'Push to EinkPi'; btn.disabled = false; });
   } else {
     // No module previewed yet, trigger scheduler refresh
     fetch('/refresh', { method: 'POST' })
       .then(() => {
         setTimeout(() => {
           document.getElementById('previewImg').src = '/preview?' + Date.now();
-          btn.textContent = 'Refresh Now';
+          btn.textContent = 'Push to EinkPi';
           btn.disabled = false;
         }, 2000);
       })
-      .catch(() => { btn.textContent = 'Refresh Now'; btn.disabled = false; });
+      .catch(() => { btn.textContent = 'Push to EinkPi'; btn.disabled = false; });
   }
 }
 
