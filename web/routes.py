@@ -89,14 +89,6 @@ def create_app(config, module_registry, scheduler):
 
     @app.route("/permissions", methods=["POST"])
     def permissions():
-        # Google API credentials
-        g_id = request.form.get("google_client_id", "").strip()
-        g_secret = request.form.get("google_client_secret", "").strip()
-        if g_id:
-            config.set(g_id, "google", "client_id")
-        if g_secret:
-            config.set(g_secret, "google", "client_secret")
-
         # Habitica credentials (stored in habits module settings)
         hab_user = request.form.get("habitica_user_id", "").strip()
         hab_token = request.form.get("habitica_api_token", "").strip()
@@ -138,9 +130,6 @@ def create_app(config, module_registry, scheduler):
             current_settings = module.default_settings()
 
         extra = {}
-        if name == "tasks":
-            token_path = Path(__file__).parent.parent / "google_token.json"
-            extra["authorized"] = token_path.exists()
         if name == "fitness":
             token_path = Path(__file__).parent.parent / "fitbit_token.json"
             extra["authorized"] = token_path.exists()
@@ -240,110 +229,6 @@ def create_app(config, module_registry, scheduler):
         if path.exists():
             path.unlink()
         return redirect(url_for("photos_list"))
-
-    # ---- Google OAuth routes for Tasks module ----
-
-    @app.route("/oauth/google/start")
-    def oauth_google_start():
-        """Start Google OAuth flow for Tasks API."""
-        try:
-            from google_auth_oauthlib.flow import Flow
-        except ImportError:
-            return "google-auth-oauthlib not installed. Run: pip install google-auth-oauthlib", 500
-
-        client_id = config.google_client_id
-        client_secret = config.google_client_secret
-
-        if not client_id or not client_secret:
-            return "Set up Google API credentials in Settings first.", 400
-
-        client_config = {
-            "web": {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [f"http://{request.host}/oauth/google/callback"],
-            }
-        }
-
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=["https://www.googleapis.com/auth/tasks.readonly"],
-            redirect_uri=f"http://{request.host}/oauth/google/callback",
-        )
-
-        auth_url, _ = flow.authorization_url(
-            access_type="offline",
-            prompt="consent",
-        )
-        return redirect(auth_url)
-
-    @app.route("/oauth/google/callback")
-    def oauth_google_callback():
-        """Handle Google OAuth callback, save tokens."""
-        try:
-            from google_auth_oauthlib.flow import Flow
-        except ImportError:
-            return "google-auth-oauthlib not installed", 500
-
-        client_id = config.google_client_id
-        client_secret = config.google_client_secret
-
-        client_config = {
-            "web": {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [f"http://{request.host}/oauth/google/callback"],
-            }
-        }
-
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=["https://www.googleapis.com/auth/tasks.readonly"],
-            redirect_uri=f"http://{request.host}/oauth/google/callback",
-        )
-
-        flow.fetch_token(authorization_response=request.url)
-
-        creds = flow.credentials
-        token_path = Path(__file__).parent.parent / "google_token.json"
-        token_path.write_text(creds.to_json())
-        logger.info("Google Tasks authorized successfully")
-
-        return redirect(url_for("module_config", name="tasks"))
-
-    @app.route("/tasks/lists")
-    def tasks_lists():
-        """Return JSON list of user's Google Task lists."""
-        token_path = Path(__file__).parent.parent / "google_token.json"
-        if not token_path.exists():
-            return jsonify({"error": "Not authorized"}), 401
-
-        try:
-            from google.oauth2.credentials import Credentials
-            from google.auth.transport.requests import Request
-            from googleapiclient.discovery import build
-
-            creds = Credentials.from_authorized_user_file(
-                str(token_path),
-                ["https://www.googleapis.com/auth/tasks.readonly"],
-            )
-            if creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                token_path.write_text(creds.to_json())
-
-            service = build("tasks", "v1", credentials=creds)
-            results = service.tasklists().list(maxResults=20).execute()
-            items = results.get("items", [])
-            return jsonify({
-                "lists": [{"id": l["id"], "title": l["title"]} for l in items]
-            })
-        except Exception as e:
-            logger.error(f"Failed to fetch task lists: {e}")
-            return jsonify({"error": str(e)}), 500
 
     # ---- Fitbit OAuth routes for Fitness module ----
 

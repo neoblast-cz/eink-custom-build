@@ -21,66 +21,8 @@
     </div>
   </form>
 
-  <hr style="border-color: #444; margin: 1.5rem 0;">
-
-  <h3>Google Tasks Authorization</h3>
-  <p class="hint">Google API credentials are configured in <a href="/">Permissions</a> on the main page.</p>
-  {% if authorized %}
-    <p style="color: #6f6;">Authorized with Google Tasks</p>
-    <a href="/oauth/google/start" class="btn-secondary">Re-authorize</a>
-  {% else %}
-    <p class="hint">Click below to sign in with your Google account and allow access to Tasks.</p>
-    <a href="/oauth/google/start" class="btn-primary">Authorize with Google</a>
-  {% endif %}
-
-  {% if authorized %}
-  <hr style="border-color: #444; margin: 1.5rem 0;">
-
-  <h3>Task List</h3>
-  <p class="hint">Select which task list to display. Loading lists...</p>
-  <select id="list-select" style="width:100%; padding:8px; margin-top:8px; background:#333; color:#eee; border:1px solid #555; border-radius:4px;">
-    <option value="@default">My Tasks (default)</option>
-  </select>
-  <p id="list-status" class="hint"></p>
-
-  <script>
-    (function() {
-      var select = document.getElementById('list-select');
-      var status = document.getElementById('list-status');
-      var current = '{{ settings.list_id | default("@default") }}';
-
-      fetch('/tasks/lists')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.error) {
-            status.textContent = 'Error: ' + data.error;
-            return;
-          }
-          select.innerHTML = '';
-          data.lists.forEach(function(list) {
-            var opt = document.createElement('option');
-            opt.value = list.id;
-            opt.textContent = list.title;
-            if (list.id === current) opt.selected = true;
-            select.appendChild(opt);
-          });
-          status.textContent = 'Loaded ' + data.lists.length + ' list(s). Select one and save below.';
-        })
-        .catch(function(e) {
-          status.textContent = 'Failed to load lists.';
-        });
-
-      select.addEventListener('change', function() {
-        fetch('/module/tasks', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'max_tasks={{ settings.max_tasks | default(15) }}&list_id=' + encodeURIComponent(select.value)
-        }).then(function() {
-          status.textContent = 'Task list saved!';
-        });
-      });
-    })();
-  </script>
-  {% endif %}
+  <p class="hint" style="margin-top:1.5rem;">
+    Habitica credentials are configured in <a href="/">Permissions</a> on the main page.
+  </p>
 </div>
 {% endblock %}
