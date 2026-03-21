@@ -223,7 +223,7 @@ class CalendarModule(BaseModule):
 
     def _draw_events(self, draw, x, y, max_x, max_y, events, fonts):
         draw.text((x, y), "Upcoming Events", fill=0, font=fonts["lg"])
-        y += 38
+        y += 30
 
         if not events:
             msg = "No upcoming events"
@@ -235,7 +235,7 @@ class CalendarModule(BaseModule):
         # Group events by date key for day indicator logic
         indicator_w = 32  # space reserved for the day circle on the left
         text_x = x + indicator_w + 8  # where event text starts
-        entry_h = 48
+        entry_h = 44
         last_date_key = None
         last_month_key = None
 
@@ -246,15 +246,14 @@ class CalendarModule(BaseModule):
 
             # Month separator when events cross into a new month
             if month_key != last_month_key and last_month_key is not None:
-                y += 12  # extra spacing above month separator
-                if y + 20 + entry_h > max_y:
+                if y + 16 + entry_h > max_y:
                     break
                 month_label = dt.strftime("%B")
                 draw.line([(x, y + 5), (x + 8, y + 5)], fill=150, width=1)
                 mlw = fonts["xs"].getlength(month_label)
                 draw.text((x + 12, y - 1), month_label, fill=120, font=fonts["xs"])
                 draw.line([(x + 16 + mlw, y + 5), (max_x, y + 5)], fill=150, width=1)
-                y += 18
+                y += 14
             last_month_key = month_key
 
             if y + entry_h > max_y:
@@ -293,7 +292,7 @@ class CalendarModule(BaseModule):
                 label = "All day"
             else:
                 label = dt.strftime("%H:%M")
-            draw.text((text_x, y + 20), label, fill=100, font=fonts["sm"])
+            draw.text((text_x, y + 19), label, fill=100, font=fonts["sm"])
 
             y += entry_h - 8
             draw.line([(text_x, y), (max_x, y)], fill=220, width=1)
