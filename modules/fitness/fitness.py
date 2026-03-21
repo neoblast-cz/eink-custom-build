@@ -28,12 +28,11 @@ class FitnessModule(BaseModule):
 
         steps = self._fetch_time_series("steps", token)
         distance = self._fetch_time_series("distance", token)
-        calories = self._fetch_time_series("calories", token)
         weight = self._fetch_weight(token)
         step_goal = int(settings.get("step_goal", 10000))
         weight_unit = settings.get("weight_unit", "kg")
 
-        return self._draw(width, height, steps, distance, calories, weight,
+        return self._draw(width, height, steps, distance, weight,
                           step_goal, weight_unit)
 
     def default_settings(self) -> dict:
@@ -204,7 +203,7 @@ class FitnessModule(BaseModule):
         draw.text((cx - hw // 2, cy + 10), hint, fill=120, font=fonts["sm"])
         return img
 
-    def _draw(self, width, height, steps, distance, calories, weight,
+    def _draw(self, width, height, steps, distance, weight,
               step_goal, weight_unit):
         img = Image.new("L", (width, height), 255)
         draw = ImageDraw.Draw(img)
@@ -220,36 +219,31 @@ class FitnessModule(BaseModule):
         title_y = 32
         draw.line([(margin, title_y), (width - margin, title_y)], fill=180, width=1)
 
-        # 2x2 grid
         mid_x = width // 2
-        mid_y = title_y + (height - title_y) // 2
         top_y = title_y + 4
-
-        # Grid lines
-        draw.line([(mid_x, top_y), (mid_x, height - 4)], fill=180, width=1)
-        draw.line([(margin, mid_y), (width - margin, mid_y)], fill=180, width=1)
-
+        top_h = (height - title_y) // 2
+        mid_y = title_y + top_h
         cell_w = mid_x - margin
         cell_h = mid_y - top_y
+        bottom_h = height - mid_y - 4
 
-        # Top-left: Steps (bar chart with goal line)
+        # Grid lines: vertical only in top half, horizontal full width
+        draw.line([(mid_x, top_y), (mid_x, mid_y)], fill=180, width=1)
+        draw.line([(margin, mid_y), (width - margin, mid_y)], fill=180, width=1)
+
+        # Top-left: Steps
         self._draw_bar_chart(
             draw, margin, top_y, cell_w, cell_h, steps,
             "Steps", fonts, goal=step_goal, fmt_int=True,
         )
-        # Top-right: Distance (bar chart, km)
+        # Top-right: Distance
         self._draw_bar_chart(
             draw, mid_x + 1, top_y, cell_w, cell_h, distance,
             "Distance (km)", fonts, fmt_float=True,
         )
-        # Bottom-left: Calories (bar chart)
-        self._draw_bar_chart(
-            draw, margin, mid_y + 1, cell_w, cell_h, calories,
-            "Calories", fonts, fmt_int=True,
-        )
-        # Bottom-right: Weight (line chart)
+        # Bottom full-width: Weight
         self._draw_weight_chart(
-            draw, mid_x + 1, mid_y + 1, cell_w, cell_h,
+            draw, margin, mid_y + 1, width - 2 * margin, bottom_h,
             weight, weight_unit, fonts,
         )
 
@@ -435,8 +429,24 @@ class FitnessModule(BaseModule):
         last = coords[-1]
         draw.ellipse([last[0] - 4, last[1] - 4, last[0] + 4, last[1] + 4], fill=0)
 
-        # X-axis hint
-        hint = f"Last {len(data)} entries"
-        hw = fonts["xs"].getlength(hint)
-        draw.text(((chart_left + chart_right) // 2 - hw // 2, chart_bottom + 3),
-                  hint, fill=160, font=fonts["xs"])
+        # X-axis date labels — ~6 evenly spaced
+        n = len(data)
+        label_indices = sorted(set(
+            [0] + [int(i * (n - 1) / 4) for i in range(1, 4)] + [n - 1]
+        ))
+        prev_label_right = -999
+        for idx in label_indices:
+            date_str = data[idx].get("date", "")
+            if not date_str:
+                continue
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                label = dt.strftime("%b %d")
+            except ValueError:
+                continue
+            px = chart_left + (idx * chart_w // (n - 1) if n > 1 else chart_w // 2)
+            lw = int(fonts["xs"].getlength(label))
+            lx = max(chart_left, min(px - lw // 2, chart_right - lw))
+            if lx > prev_label_right + 2:
+                draw.text((lx, chart_bottom + 3), label, fill=140, font=fonts["xs"])
+                prev_label_right = lx + lw
