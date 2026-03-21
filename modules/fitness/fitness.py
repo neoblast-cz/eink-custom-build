@@ -429,21 +429,38 @@ class FitnessModule(BaseModule):
         last = coords[-1]
         draw.ellipse([last[0] - 4, last[1] - 4, last[0] + 4, last[1] + 4], fill=0)
 
-        # X-axis date labels — ~6 evenly spaced
+        # Vertical lines at year boundaries
         n = len(data)
+        dates = []
+        for entry in data:
+            try:
+                dates.append(datetime.strptime(entry["date"], "%Y-%m-%d"))
+            except (ValueError, KeyError):
+                dates.append(None)
+
+        for i, dt in enumerate(dates):
+            if dt is None:
+                continue
+            if dt.month == 1 and dt.day <= 15:
+                # Check previous entry was prior year
+                prev = next((dates[j] for j in range(i - 1, -1, -1) if dates[j]), None)
+                if prev and prev.year < dt.year:
+                    px = chart_left + (i * chart_w // (n - 1) if n > 1 else chart_w // 2)
+                    draw.line([(px, chart_top), (px, chart_bottom)], fill=200, width=1)
+                    yr_label = f"'{str(dt.year)[2:]}"
+                    yw = int(fonts["xs"].getlength(yr_label))
+                    draw.text((px - yw // 2, chart_top - 11), yr_label, fill=140, font=fonts["xs"])
+
+        # X-axis date labels — "Mar '26" format, ~5 evenly spaced
         label_indices = sorted(set(
             [0] + [int(i * (n - 1) / 4) for i in range(1, 4)] + [n - 1]
         ))
         prev_label_right = -999
         for idx in label_indices:
-            date_str = data[idx].get("date", "")
-            if not date_str:
+            dt = dates[idx]
+            if dt is None:
                 continue
-            try:
-                dt = datetime.strptime(date_str, "%Y-%m-%d")
-                label = dt.strftime("%b %d")
-            except ValueError:
-                continue
+            label = f"{dt.strftime('%b')} '{str(dt.year)[2:]}"
             px = chart_left + (idx * chart_w // (n - 1) if n > 1 else chart_w // 2)
             lw = int(fonts["xs"].getlength(label))
             lx = max(chart_left, min(px - lw // 2, chart_right - lw))
