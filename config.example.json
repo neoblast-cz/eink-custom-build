@@ -2,26 +2,25 @@
   "display": {
     "width": 800,
     "height": 480,
-    "rotation": 0,
     "refresh_interval_minutes": 30,
     "timezone": "Europe/Brussels"
   },
-  "google": {
-    "client_id": "",
-    "client_secret": ""
-  },
-  "active_module": "photos",
+  "active_module": "calendar",
   "modules": {
     "calendar": {
       "ics_url": "",
-      "days_ahead": 7,
-      "max_events": 8
+      "days_ahead": 7
     },
     "photos": {
       "photo_dir": "uploads"
     },
-    "tasks": {},
-    "dashboard": {},
-    "habits": {"habitica_user_id": "", "habitica_api_token": ""}
+    "habits": {
+      "habitica_user_id": "",
+      "habitica_api_token": ""
+    },
+    "fitness": {
+      "weight_unit": "kg",
+      "step_goal": 10000
+    }
   }
 }

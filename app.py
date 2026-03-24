@@ -34,8 +34,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _clean_rotation(config, module_registry):
+    """Remove any rotation entries that reference modules no longer in the registry."""
+    rotation = config.rotation
+    cleaned = [e for e in rotation if e.get("module") in module_registry]
+    if len(cleaned) != len(rotation):
+        removed = [e["module"] for e in rotation if e.get("module") not in module_registry]
+        logger.warning(f"Removing unknown modules from rotation: {removed}")
+        config.set(cleaned, "rotation")
+        if cleaned:
+            config.set(cleaned[0]["module"], "active_module")
+        config.save()
+
+
 def main():
     config = Config()
+    _clean_rotation(config, MODULE_REGISTRY)
     display = DisplayDriver()
     renderer = Renderer(config, MODULE_REGISTRY, display)
     scheduler = Scheduler(

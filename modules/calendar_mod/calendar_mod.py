@@ -21,7 +21,6 @@ class CalendarModule(BaseModule):
         return {
             "ics_url": "",
             "days_ahead": 7,
-            "max_events": 8,
         }
 
     def _fetch_events(self, settings: dict) -> list:
@@ -41,8 +40,6 @@ class CalendarModule(BaseModule):
 
             now = datetime.now(tz)
             end = now + timedelta(days=int(settings.get("days_ahead", 7)))
-            max_events = int(settings.get("max_events", 8))
-
             events = []
             for component in cal.walk():
                 if component.name != "VEVENT":
@@ -71,7 +68,7 @@ class CalendarModule(BaseModule):
                     })
 
             events.sort(key=lambda e: e["start"])
-            return events[:max_events]
+            return events
 
         except ImportError:
             logger.error("Install icalendar: pip install icalendar requests python-dateutil")

@@ -16,8 +16,7 @@ class Renderer:
         module = self.modules.get(module_name)
 
         if module is None:
-            logger.error(f"Unknown module: {module_name}")
-            self._show_error(f"Unknown module: {module_name}")
+            logger.warning(f"Skipping unknown module '{module_name}' (removed from registry?)")
             return
 
         settings = self.config.module_settings(module_name)

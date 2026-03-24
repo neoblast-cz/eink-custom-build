@@ -65,24 +65,6 @@
     </div>
     <div id="permissionsPanel" class="settings-collapsible" style="display: none;">
       <form method="POST" action="/permissions" class="settings-form">
-        <h3>Google API</h3>
-        <p class="hint">Used by the Tasks module. Create an OAuth 2.0 Client ID in your <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
-        <p class="hint">Add this redirect URI:<br>
-          <code>http://{{ request.host }}/oauth/google/callback</code>
-        </p>
-
-        <label for="google_client_id">Client ID</label>
-        <input type="text" id="google_client_id" name="google_client_id"
-               value="{{ config.google_client_id }}"
-               placeholder="xxxx.apps.googleusercontent.com">
-
-        <label for="google_client_secret">Client Secret</label>
-        <input type="password" id="google_client_secret" name="google_client_secret"
-               value="{{ config.google_client_secret }}"
-               placeholder="GOCSPX-...">
-
-        <hr>
-
         <h3>Habitica</h3>
         <p class="hint">Used by the Habits and Tasks modules. Find your credentials at <a href="https://habitica.com/user/settings/api" target="_blank">Habitica Settings &gt; API</a>.</p>
 

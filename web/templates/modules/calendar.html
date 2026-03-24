@@ -16,10 +16,6 @@
   <input type="number" id="days_ahead" name="days_ahead"
          value="{{ settings.days_ahead | default(7) }}" min="1" max="90">
 
-  <label for="max_events">Maximum events to show</label>
-  <input type="number" id="max_events" name="max_events"
-         value="{{ settings.max_events | default(8) }}" min="1" max="20">
-
   <div class="form-actions">
     <button type="submit" class="btn-primary">Save</button>
     <a href="/" class="btn-secondary">Cancel</a>
