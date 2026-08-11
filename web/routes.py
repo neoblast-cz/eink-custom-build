@@ -39,19 +39,12 @@ def create_app(config, module_registry, scheduler):
 
     @app.route("/")
     def index():
-        rotation = config.rotation
-        if not rotation:
-            rotation = [{"module": config.active_module, "duration_minutes": config.refresh_minutes}]
-
         return render_template(
             "index.html",
             active_module=config.active_module,
             modules=module_registry,
             refresh_minutes=config.refresh_minutes,
-            rotation=rotation,
             config=config,
-            timezones=COMMON_TIMEZONES,
-            habitica_settings=config.module_settings("habits"),
         )
 
     @app.route("/settings", methods=["GET", "POST"])
@@ -82,34 +75,50 @@ def create_app(config, module_registry, scheduler):
             config.set(tz, "display", "timezone")
 
             config.save()
-            return redirect(url_for("index"))
+            return redirect(url_for("settings"))
 
-        # Settings are now inline on the dashboard
-        return redirect(url_for("index"))
+        rotation = config.rotation
+        if not rotation:
+            rotation = [{"module": config.active_module, "duration_minutes": config.refresh_minutes}]
 
-    @app.route("/permissions", methods=["POST"])
+        return render_template(
+            "settings.html",
+            modules=module_registry,
+            rotation=rotation,
+            config=config,
+            timezones=COMMON_TIMEZONES,
+        )
+
+    @app.route("/permissions", methods=["GET", "POST"])
     def permissions():
-        # Habitica credentials (stored in habits module settings)
-        hab_user = request.form.get("habitica_user_id", "").strip()
-        hab_token = request.form.get("habitica_api_token", "").strip()
-        habits_settings = config.module_settings("habits") or {}
-        habits_settings["habitica_user_id"] = hab_user
-        habits_settings["habitica_api_token"] = hab_token
-        config.set(habits_settings, "modules", "habits")
+        if request.method == "POST":
+            # Habitica credentials (stored in habits module settings)
+            hab_user = request.form.get("habitica_user_id", "").strip()
+            hab_token = request.form.get("habitica_api_token", "").strip()
+            habits_settings = config.module_settings("habits") or {}
+            habits_settings["habitica_user_id"] = hab_user
+            habits_settings["habitica_api_token"] = hab_token
+            config.set(habits_settings, "modules", "habits")
 
-        # Fitbit credentials
-        fb_id = request.form.get("fitbit_client_id", "").strip()
-        fb_secret = request.form.get("fitbit_client_secret", "").strip()
-        fb_redirect = request.form.get("fitbit_redirect_uri", "").strip()
-        if fb_id:
-            config.set(fb_id, "fitbit", "client_id")
-        if fb_secret:
-            config.set(fb_secret, "fitbit", "client_secret")
-        if fb_redirect:
-            config.set(fb_redirect, "fitbit", "redirect_uri")
+            # Fitbit credentials
+            fb_id = request.form.get("fitbit_client_id", "").strip()
+            fb_secret = request.form.get("fitbit_client_secret", "").strip()
+            fb_redirect = request.form.get("fitbit_redirect_uri", "").strip()
+            if fb_id:
+                config.set(fb_id, "fitbit", "client_id")
+            if fb_secret:
+                config.set(fb_secret, "fitbit", "client_secret")
+            if fb_redirect:
+                config.set(fb_redirect, "fitbit", "redirect_uri")
 
-        config.save()
-        return redirect(url_for("index"))
+            config.save()
+            return redirect(url_for("permissions"))
+
+        return render_template(
+            "permissions.html",
+            config=config,
+            habitica_settings=config.module_settings("habits"),
+        )
 
     @app.route("/module/<name>", methods=["GET", "POST"])
     def module_config(name):

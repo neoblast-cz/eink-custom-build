@@ -11,9 +11,10 @@ class Scheduler:
     - Rotation: cycles through modules, each with its own display duration
     """
 
-    def __init__(self, render_module_fn, config):
+    def __init__(self, render_module_fn, config, hardware_available=True):
         self._render_module = render_module_fn
         self._config = config
+        self._hardware_available = hardware_available
         self._thread = None
         self._stop_event = threading.Event()
         self._force_event = threading.Event()
@@ -33,7 +34,7 @@ class Scheduler:
         while not self._stop_event.is_set():
             self._config.load()  # pick up any config changes
 
-            if self._config.rotation_enabled:
+            if self._config.rotation_enabled and self._hardware_available:
                 self._run_rotation_cycle()
             else:
                 self._render_module(self._config.active_module)

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Permissions{% endblock %}
+{% block content %}
+<h2>Permissions</h2>
+<form method="POST" class="settings-form" style="max-width: 600px;">
+  <h3>Habitica</h3>
+  <p class="hint">Used by the Habits and Tasks modules. Find your credentials at <a href="https://habitica.com/user/settings/api" target="_blank">Habitica Settings &gt; API</a>.</p>
+
+  <label for="habitica_user_id">User ID</label>
+  <input type="text" id="habitica_user_id" name="habitica_user_id"
+         value="{{ habitica_settings.habitica_user_id | default('') }}"
+         placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+
+  <label for="habitica_api_token">API Token</label>
+  <input type="password" id="habitica_api_token" name="habitica_api_token"
+         value="{{ habitica_settings.habitica_api_token | default('') }}"
+         placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+
+  <hr>
+
+  <h3>Fitbit</h3>
+  <p class="hint">Used by the Fitness module. Register a "Personal" app at
+    <a href="https://dev.fitbit.com/apps/new" target="_blank">dev.fitbit.com</a>.</p>
+
+  <label for="fitbit_client_id">Client ID</label>
+  <input type="text" id="fitbit_client_id" name="fitbit_client_id"
+         value="{{ config.get('fitbit', 'client_id', default='') }}"
+         placeholder="23V3CR">
+
+  <label for="fitbit_client_secret">Client Secret</label>
+  <input type="password" id="fitbit_client_secret" name="fitbit_client_secret"
+         value="{{ config.get('fitbit', 'client_secret', default='') }}"
+         placeholder="d2e34f4e...">
+
+  <label for="fitbit_redirect_uri">Redirect URI</label>
+  <input type="text" id="fitbit_redirect_uri" name="fitbit_redirect_uri"
+         value="{{ config.get('fitbit', 'redirect_uri', default='https://raspberrypi:8080/oauth/fitbit/callback') }}"
+         placeholder="https://raspberrypi:8080/oauth/fitbit/callback">
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">Save Permissions</button>
+    <a href="/" class="btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -93,7 +93,10 @@ class HabitsModule(BaseModule):
             # Fetch user stats (level, XP)
             user_stats = {}
             try:
-                user_url = f"{HABITICA_API}/user?userFields=stats"
+                # Fetching the full user object (not userFields=stats) matters here:
+                # toNextLevel is a server-computed virtual that Habitica only
+                # populates on the full document, not on a field-projected query.
+                user_url = f"{HABITICA_API}/user"
                 user_req = urllib.request.Request(user_url, headers={
                     "x-api-user": user_id,
                     "x-api-key": api_token,
@@ -141,6 +144,51 @@ class HabitsModule(BaseModule):
             return None
         return round(done / total * 100)
 
+    def _draw_trend_bar(self, draw, col_x, y, col_w, row_h, pct_7d, pct_30d, pct_60d):
+        """A single vertical capsule per habit, layering 60d/30d/7d completion as
+        nested fills from the bottom — recent performance visually overlays the
+        longer-term baseline instead of three separate numbers."""
+        bar_w = 22
+        pad = 5
+        track_top = y + pad
+        track_bottom = y + row_h - pad
+        track_h = track_bottom - track_top
+        bar_x = col_x + (col_w - bar_w) // 2
+
+        if track_h < 10:
+            return
+
+        track_r = max(2, min(bar_w // 2, track_h // 2))
+        draw.rounded_rectangle(
+            [bar_x, track_top, bar_x + bar_w, track_bottom],
+            radius=track_r, fill=235, outline=195, width=1,
+        )
+
+        # Faint 50% reference tick
+        mid_y = track_bottom - int(track_h * 0.5)
+        draw.line([(bar_x + 3, mid_y), (bar_x + bar_w - 3, mid_y)], fill=210, width=1)
+
+        # Layer from lightest/longest-window to darkest/most-recent so each
+        # shorter window's rounded cap reads as a "liquid level" sitting on top.
+        layers = [(pct_60d, 205), (pct_30d, 115), (pct_7d, 15)]
+        any_data = False
+        for pct, shade in layers:
+            if pct is None:
+                continue
+            any_data = True
+            fill_h = int(track_h * pct / 100)
+            if fill_h <= 0:
+                continue
+            fill_top = track_bottom - fill_h
+            r = max(2, min(bar_w // 2, fill_h // 2))
+            draw.rounded_rectangle([bar_x, fill_top, bar_x + bar_w, track_bottom], radius=r, fill=shade)
+
+        if not any_data:
+            draw.line(
+                [(bar_x + 5, (track_top + track_bottom) // 2), (bar_x + bar_w - 5, (track_top + track_bottom) // 2)],
+                fill=200, width=2,
+            )
+
     def _load_fonts(self):
         font_paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -187,14 +235,15 @@ class HabitsModule(BaseModule):
 
         name_w = 140
         circles_w = days_shown * 22 + 10
+        bar_col_w = 60
         pct_col_w = 42
-        content_w = name_w + circles_w + pct_col_w * 4
+        content_w = name_w + circles_w + bar_col_w + pct_col_w
         x_start = max(margin, (left_w - content_w) // 2)
 
         col_name = x_start
         col_circles = col_name + name_w
-        col_7d = col_circles + circles_w
-        col_30d = col_7d + pct_col_w
+        col_bar = col_circles + circles_w
+        col_streak = col_bar + bar_col_w
 
         y = margin
 
@@ -211,12 +260,10 @@ class HabitsModule(BaseModule):
             draw.text((cx - lw // 2, y + 4), day_label,
                       fill=0 if is_today else 160, font=fonts["xs"])
 
-        # Percentage headers (7d, 30d, 60d, streak)
-        col_60d = col_30d + pct_col_w
-        col_streak = col_60d + pct_col_w
-        for label, col_x in [("7d", col_7d), ("30d", col_30d), ("60d", col_60d)]:
-            lw = fonts["sm"].getlength(label)
-            draw.text((col_x + (pct_col_w - lw) // 2, y + 2), label, fill=100, font=fonts["sm"])
+        # Trend bar header — legend for the layered 7d/30d/60d fill
+        trend_label = "7·30·60d"
+        tlw = fonts["xs"].getlength(trend_label)
+        draw.text((col_bar + (bar_col_w - tlw) // 2, y + 4), trend_label, fill=100, font=fonts["xs"])
         # Streak header with flame-like symbol
         streak_label = "streak"
         slw = fonts["xs"].getlength(streak_label)
@@ -232,10 +279,6 @@ class HabitsModule(BaseModule):
         row_h = (height - y - margin - 10) // max(len(habits), 1)
         row_h = min(row_h, 48)
         circle_r = 8
-
-        overall_7d = []
-        overall_30d = []
-        overall_60d = []
 
         # Draw today highlight column (light gray background behind today's circles)
         today_col_idx = days_shown - 1  # today is the last column
@@ -274,23 +317,11 @@ class HabitsModule(BaseModule):
                     draw.ellipse([cx - circle_r, cy - circle_r, cx + circle_r, cy + circle_r],
                                   outline=180, width=1)
 
-            # Per-habit percentages (7d, 30d, 60d) — excludes today
-            for days, col_x, overall_list in [
-                (7, col_7d, overall_7d),
-                (30, col_30d, overall_30d),
-                (60, col_60d, overall_60d),
-            ]:
-                pct = self._calc_percentage(log, habit_name, today, days, created_date)
-                if pct is not None:
-                    overall_list.append(pct)
-                    pct_str = f"{pct}%"
-                    fill = max(0, 160 - pct)
-                else:
-                    pct_str = "--"
-                    fill = 180
-                pw = fonts["sm"].getlength(pct_str)
-                draw.text((col_x + (pct_col_w - pw) // 2, y + (row_h - 14) // 2),
-                           pct_str, fill=fill, font=fonts["sm"])
+            # Layered trend bar (7d/30d/60d) replaces the old numeric columns
+            pct_7d = self._calc_percentage(log, habit_name, today, 7, created_date)
+            pct_30d = self._calc_percentage(log, habit_name, today, 30, created_date)
+            pct_60d = self._calc_percentage(log, habit_name, today, 60, created_date)
+            self._draw_trend_bar(draw, col_bar, y, bar_col_w, row_h, pct_7d, pct_30d, pct_60d)
 
             # Current streak from Habitica API
             streak = habit_info.get("streak", 0)
@@ -305,46 +336,16 @@ class HabitsModule(BaseModule):
         # Separator below habits
         draw.line([(x_start, y + 4), (col_streak + pct_col_w, y + 4)], fill=180, width=1)
 
-        # ---- Right panel: Overall percentages in big font ----
+        # ---- Right panel: Level and XP ----
         panel_x = left_w
-        panel_y = margin + 10
         panel_center = panel_x + overall_panel_w // 2
 
-        # "Overall" label
-        label = "Overall"
-        lw = fonts["md"].getlength(label)
-        draw.text((panel_center - lw // 2, panel_y), label, fill=80, font=fonts["md"])
-        panel_y += 35
-
-        for values, label in [(overall_7d, "7d"), (overall_30d, "30d"), (overall_60d, "60d")]:
-            if values:
-                avg = round(sum(values) / len(values))
-                pct_str = f"{avg}%"
-                fill = max(0, 140 - avg)
-            else:
-                pct_str = "--"
-                fill = 180
-
-            # Big percentage
-            pw = fonts["xl"].getlength(pct_str)
-            draw.text((panel_center - pw // 2, panel_y), pct_str, fill=fill, font=fonts["xl"])
-            panel_y += 38
-
-            # Small label below
-            lw = fonts["sm"].getlength(label)
-            draw.text((panel_center - lw // 2, panel_y), label, fill=120, font=fonts["sm"])
-            panel_y += 28
-
-        # ---- Level and XP ----
         if user_stats:
             lvl = user_stats.get("lvl", 0)
             exp = user_stats.get("exp", 0)
             to_next = user_stats.get("toNextLevel", 0)
 
-            panel_y += 5
-            draw.line([(panel_x + 10, panel_y), (panel_x + overall_panel_w - 10, panel_y)],
-                      fill=180, width=1)
-            panel_y += 10
+            panel_y = margin + 10
 
             # Level
             lvl_str = f"Lv {lvl}"

@@ -21,6 +21,11 @@ class DisplayDriver:
         self._available = False
         self._try_import()
 
+    @property
+    def available(self) -> bool:
+        """True on the Pi with real EPD hardware; False in Windows/preview-only dev mode."""
+        return self._available
+
     def _try_import(self):
         try:
             from waveshare_epd import epd7in5_V2

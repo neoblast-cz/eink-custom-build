@@ -28,10 +28,19 @@ class FitnessModule(BaseModule):
 
         summary = self._fetch_daily_summary(token)
         sleep = self._fetch_sleep(token)
-        weekly_azm = self._fetch_weekly_azm(token)
+        weekly_steps, today_steps = self._fetch_weekly_steps(token)
 
         steps = summary.get("steps", 0)
         steps_goal = summary.get("steps_goal") or int(settings.get("step_goal", 10000))
+        weekly_steps_goal = steps_goal * 7
+        distance = summary.get("distance", 0.0)
+        api_distance_goal = summary.get("distance_goal")
+        # Fitbit has been observed returning garbage/mis-scaled distance goals
+        # (e.g. 8036720 instead of ~8) for some accounts — ignore anything implausible.
+        if api_distance_goal and 0 < api_distance_goal <= 200:
+            distance_goal = api_distance_goal
+        else:
+            distance_goal = float(settings.get("distance_goal_km", 8))
         calories = summary.get("calories", 0)
         calories_goal = summary.get("calories_goal") or int(settings.get("calorie_goal", 2500))
 
@@ -40,19 +49,18 @@ class FitnessModule(BaseModule):
             float(settings.get("sleep_goal_hours", 8)) * 60
         )
 
-        cardio_goal = int(settings.get("weekly_cardio_goal", 150))
-
         return self._draw(
-            width, height, steps, steps_goal, calories, calories_goal,
-            sleep_minutes, sleep_goal_minutes, weekly_azm, cardio_goal,
+            width, height, steps, steps_goal, distance, distance_goal,
+            calories, calories_goal, sleep_minutes, sleep_goal_minutes,
+            weekly_steps, weekly_steps_goal, today_steps,
         )
 
     def default_settings(self) -> dict:
         return {
             "step_goal": "10000",
+            "distance_goal_km": "8",
             "calorie_goal": "2500",
             "sleep_goal_hours": "8",
-            "weekly_cardio_goal": "150",
         }
 
     # ── Token management ───────────────────────────────────────────
@@ -126,16 +134,23 @@ class FitnessModule(BaseModule):
             return json.loads(resp.read())
 
     def _fetch_daily_summary(self, token: str) -> dict:
-        """Fetch today's activity summary: steps, calories burned, and Fitbit's own goals."""
+        """Fetch today's activity summary: steps, distance, calories burned, and Fitbit's own goals."""
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             data = self._api_get(f"{FITBIT_API}/1/user/-/activities/date/{today}.json", token)
             summary = data.get("summary", {})
             goals = data.get("goals", {})
+            total_distance = next(
+                (d.get("distance", 0.0) for d in summary.get("distances", [])
+                 if d.get("activity") == "total"),
+                0.0,
+            )
             return {
                 "steps": summary.get("steps", 0),
+                "distance": total_distance,
                 "calories": summary.get("caloriesOut", 0),
                 "steps_goal": goals.get("steps"),
+                "distance_goal": goals.get("distance"),
                 "calories_goal": goals.get("caloriesOut"),
             }
         except Exception as e:
@@ -161,20 +176,27 @@ class FitnessModule(BaseModule):
 
         return {"minutes_asleep": minutes_asleep, "goal_minutes": goal_minutes}
 
-    def _fetch_weekly_azm(self, token: str) -> int:
-        """Sum Active Zone Minutes over the trailing 7 days — Fitbit's cardio-load equivalent."""
+    def _fetch_weekly_steps(self, token: str) -> tuple:
+        """Sum steps from the start of the current calendar week (Monday) through
+        today. Returns (week_total, today_value)."""
         try:
-            end = datetime.now().strftime("%Y-%m-%d")
-            start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+            today_dt = datetime.now()
+            start_dt = today_dt - timedelta(days=today_dt.weekday())  # Monday
+            end = today_dt.strftime("%Y-%m-%d")
+            start = start_dt.strftime("%Y-%m-%d")
             data = self._api_get(
-                f"{FITBIT_API}/1/user/-/activities/active-zone-minutes/date/{start}/{end}.json",
+                f"{FITBIT_API}/1/user/-/activities/steps/date/{start}/{end}.json",
                 token,
             )
-            entries = data.get("activities-active-zone-minutes", [])
-            return sum(e.get("value", {}).get("activeZoneMinutes", 0) for e in entries)
+            entries = data.get("activities-steps", [])
+            total = sum(int(e.get("value", 0)) for e in entries)
+            today_val = 0
+            if entries and entries[-1].get("dateTime") == end:
+                today_val = int(entries[-1].get("value", 0))
+            return total, today_val
         except Exception as e:
-            logger.error(f"Fitbit active zone minutes fetch failed: {e}")
-            return 0
+            logger.error(f"Fitbit weekly steps fetch failed: {e}")
+            return 0, 0
 
     # ── Font loading ───────────────────────────────────────────────
 
@@ -215,8 +237,9 @@ class FitnessModule(BaseModule):
         draw.text((cx - hw // 2, cy + 10), hint, fill=120, font=fonts["sm"])
         return img
 
-    def _draw(self, width, height, steps, steps_goal, calories, calories_goal,
-              sleep_minutes, sleep_goal_minutes, weekly_azm, cardio_goal):
+    def _draw(self, width, height, steps, steps_goal, distance, distance_goal,
+              calories, calories_goal, sleep_minutes, sleep_goal_minutes,
+              weekly_steps, weekly_steps_goal, today_steps):
         img = Image.new("L", (width, height), 255)
         draw = ImageDraw.Draw(img)
         fonts = self._load_fonts()
@@ -238,51 +261,65 @@ class FitnessModule(BaseModule):
         right_x = margin + left_w + 24
         right_w = width - right_x - margin
 
-        self._draw_cardio_ring(
+        self._draw_steps_ring(
             draw, margin, content_top, left_w, content_h,
-            weekly_azm, cardio_goal, fonts,
+            weekly_steps, weekly_steps_goal, today_steps, fonts,
         )
 
-        row_gap = 14
-        row_h = (content_h - row_gap * 2) // 3
+        row_gap = 10
+        row_h = (content_h - row_gap * 3) // 4
         items = [
-            ("Steps", steps, steps_goal, False),
-            ("Calories", calories, calories_goal, False),
-            ("Sleep", sleep_minutes, sleep_goal_minutes, True),
+            ("Steps", steps, steps_goal, "int"),
+            ("Distance", distance, distance_goal, "km"),
+            ("Calories", calories, calories_goal, "int"),
+            ("Sleep", sleep_minutes, sleep_goal_minutes, "time"),
         ]
-        for i, (label, value, goal, is_time) in enumerate(items):
+        for i, (label, value, goal, fmt) in enumerate(items):
             ry = content_top + i * (row_h + row_gap)
-            self._draw_goal_pill(draw, right_x, ry, right_w, row_h, label, value, goal, fonts, is_time)
+            self._draw_goal_pill(draw, right_x, ry, right_w, row_h, label, value, goal, fonts, fmt)
 
         return img
 
-    def _draw_cardio_ring(self, draw, x, y, w, h, weekly_azm, goal, fonts):
+    def _draw_steps_ring(self, draw, x, y, w, h, weekly_steps, goal, today_steps, fonts):
         cx = x + w // 2
         cy = y + h // 2
         radius = min(w, h) // 2 - 10
-        thickness = max(14, radius // 6)
+        thickness = max(34, radius // 2)
 
-        pct = min(weekly_azm / goal, 1.0) if goal else 0.0
+        pct = min(weekly_steps / goal, 1.0) if goal else 0.0
 
         bbox = [cx - radius, cy - radius, cx + radius, cy + radius]
         draw.arc(bbox, 0, 360, fill=210, width=thickness)
         if pct > 0:
-            end_angle = -90 + pct * 360
-            draw.arc(bbox, -90, end_angle, fill=30, width=thickness)
+            # Fill starts at 6 o'clock (PIL angle 90) and sweeps clockwise.
+            start_angle = 90
+            end_angle = start_angle + pct * 360
+            draw.arc(bbox, start_angle, end_angle, fill=30, width=thickness)
 
         pct_str = f"{int(pct * 100)}%"
         pw = fonts["xxl"].getlength(pct_str)
         draw.text((cx - pw // 2, cy - 26), pct_str, fill=0, font=fonts["xxl"])
 
-        sub = "Weekly Cardio"
+        sub = "Weekly Steps"
         sw = fonts["sm"].getlength(sub)
         draw.text((cx - sw // 2, cy + 22), sub, fill=90, font=fonts["sm"])
 
-        detail = f"{int(weekly_azm)} of {int(goal)} min"
+        detail = f"{int(weekly_steps):,} of {int(goal):,}"
         dw = fonts["xs"].getlength(detail)
         draw.text((cx - dw // 2, cy + 42), detail, fill=140, font=fonts["xs"])
 
-    def _draw_goal_pill(self, draw, x, y, w, h, label, value, goal, fonts, is_time=False):
+        # "+N today" badge, upper-right of the ring — mirrors the Google Health style
+        if today_steps > 0:
+            badge_str = f"+{int(today_steps):,}"
+            bw = fonts["sm"].getlength(badge_str)
+            bcx = cx + int(radius * 0.62)
+            bcy = cy - int(radius * 0.8)
+            pad = 6
+            box = [bcx - bw // 2 - pad, bcy - 10, bcx + bw // 2 + pad, bcy + 10]
+            draw.rounded_rectangle(box, radius=10, fill=30)
+            draw.text((bcx - bw // 2, bcy - 7), badge_str, fill=255, font=fonts["sm"])
+
+    def _draw_goal_pill(self, draw, x, y, w, h, label, value, goal, fonts, fmt="int"):
         pad_x = 14
         pad_y = 10
 
@@ -290,12 +327,7 @@ class FitnessModule(BaseModule):
 
         draw.text((x + pad_x, y + pad_y), label, fill=70, font=fonts["sm"])
 
-        if is_time:
-            hrs = int(value // 60)
-            mins = int(value % 60)
-            val_str = f"{hrs}h {mins}m"
-        else:
-            val_str = f"{int(value):,}"
+        val_str = self._format_goal_value(value, fmt)
         vw = fonts["lg"].getlength(val_str)
         draw.text((x + w - pad_x - vw, y + pad_y - 4), val_str, fill=0, font=fonts["lg"])
 
@@ -311,9 +343,15 @@ class FitnessModule(BaseModule):
             fill_w = max(fill_w, bar_h)
             draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], radius=6, fill=40)
 
-        if is_time:
-            goal_str = f"Goal {int(goal // 60)}h {int(goal % 60)}m"
-        else:
-            goal_str = f"Goal {int(goal):,}"
+        goal_str = f"Goal {self._format_goal_value(goal, fmt)}"
         gw = fonts["xs"].getlength(goal_str)
         draw.text((x + w - pad_x - gw, bar_y + bar_h + 4), goal_str, fill=130, font=fonts["xs"])
+
+    def _format_goal_value(self, value, fmt: str) -> str:
+        if fmt == "time":
+            hrs = int(value // 60)
+            mins = int(value % 60)
+            return f"{hrs}h {mins}m"
+        if fmt == "km":
+            return f"{value:.2f} km"
+        return f"{int(value):,}"

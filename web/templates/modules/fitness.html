@@ -9,6 +9,10 @@
     <input type="number" id="step_goal" name="step_goal"
            value="{{ settings.step_goal | default(10000) }}" min="1000" max="100000">
 
+    <label for="distance_goal_km">Daily Distance Goal, km (fallback if Fitbit has none set)</label>
+    <input type="number" id="distance_goal_km" name="distance_goal_km" step="0.1"
+           value="{{ settings.distance_goal_km | default(8) }}" min="1" max="100">
+
     <label for="calorie_goal">Daily Calorie Goal (fallback if Fitbit has none set)</label>
     <input type="number" id="calorie_goal" name="calorie_goal"
            value="{{ settings.calorie_goal | default(2500) }}" min="500" max="10000">
@@ -17,10 +21,7 @@
     <input type="number" id="sleep_goal_hours" name="sleep_goal_hours" step="0.5"
            value="{{ settings.sleep_goal_hours | default(8) }}" min="4" max="12">
 
-    <label for="weekly_cardio_goal">Weekly Cardio Goal (Active Zone Minutes)</label>
-    <input type="number" id="weekly_cardio_goal" name="weekly_cardio_goal"
-           value="{{ settings.weekly_cardio_goal | default(150) }}" min="30" max="1000">
-    <p class="hint">Active Zone Minutes is Fitbit's cardio-load metric — 150/week matches the standard WHO activity guideline.</p>
+    <p class="hint">The weekly steps ring targets 7&times; the daily step goal above.</p>
 
     <div class="form-actions">
       <button type="submit" class="btn-primary">Save Settings</button>

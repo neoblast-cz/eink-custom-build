@@ -55,6 +55,7 @@ def main():
     scheduler = Scheduler(
         render_module_fn=renderer.render_and_display,
         config=config,
+        hardware_available=display.available,
     )
 
     scheduler.start()
