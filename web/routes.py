@@ -250,7 +250,7 @@ def create_app(config, module_registry, scheduler):
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": redirect_uri,
-            "scope": "activity heartrate weight profile",
+            "scope": "activity heartrate weight profile sleep",
             "expires_in": "604800",
         })
         url = f"https://www.fitbit.com/oauth2/authorize?{params}"

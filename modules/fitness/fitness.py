@@ -19,24 +19,41 @@ FITBIT_API = "https://api.fitbit.com"
 class FitnessModule(BaseModule):
     NAME = "fitness"
     DISPLAY_NAME = "Fitness"
-    DESCRIPTION = "Fitbit steps, distance, calories, and weight"
+    DESCRIPTION = "Fitbit cardio load, steps, calories, and sleep"
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
         token = self._refresh_if_needed(settings)
         if not token:
             return self._draw_not_authorized(width, height)
 
-        steps = self._fetch_time_series("steps", token)
-        distance = self._fetch_time_series("distance", token)
-        weight = self._fetch_weight(token)
-        step_goal = int(settings.get("step_goal", 10000))
-        weight_unit = settings.get("weight_unit", "kg")
+        summary = self._fetch_daily_summary(token)
+        sleep = self._fetch_sleep(token)
+        weekly_azm = self._fetch_weekly_azm(token)
 
-        return self._draw(width, height, steps, distance, weight,
-                          step_goal, weight_unit)
+        steps = summary.get("steps", 0)
+        steps_goal = summary.get("steps_goal") or int(settings.get("step_goal", 10000))
+        calories = summary.get("calories", 0)
+        calories_goal = summary.get("calories_goal") or int(settings.get("calorie_goal", 2500))
+
+        sleep_minutes = sleep.get("minutes_asleep", 0)
+        sleep_goal_minutes = sleep.get("goal_minutes") or int(
+            float(settings.get("sleep_goal_hours", 8)) * 60
+        )
+
+        cardio_goal = int(settings.get("weekly_cardio_goal", 150))
+
+        return self._draw(
+            width, height, steps, steps_goal, calories, calories_goal,
+            sleep_minutes, sleep_goal_minutes, weekly_azm, cardio_goal,
+        )
 
     def default_settings(self) -> dict:
-        return {"weight_unit": "kg", "step_goal": "10000"}
+        return {
+            "step_goal": "10000",
+            "calorie_goal": "2500",
+            "sleep_goal_hours": "8",
+            "weekly_cardio_goal": "150",
+        }
 
     # ── Token management ───────────────────────────────────────────
 
@@ -108,61 +125,56 @@ class FitnessModule(BaseModule):
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
 
-    def _fetch_time_series(self, resource: str, token: str) -> list:
-        """Fetch 15-day time series for steps, distance, or calories."""
+    def _fetch_daily_summary(self, token: str) -> dict:
+        """Fetch today's activity summary: steps, calories burned, and Fitbit's own goals."""
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            data = self._api_get(f"{FITBIT_API}/1/user/-/activities/date/{today}.json", token)
+            summary = data.get("summary", {})
+            goals = data.get("goals", {})
+            return {
+                "steps": summary.get("steps", 0),
+                "calories": summary.get("caloriesOut", 0),
+                "steps_goal": goals.get("steps"),
+                "calories_goal": goals.get("caloriesOut"),
+            }
+        except Exception as e:
+            logger.error(f"Fitbit daily summary fetch failed: {e}")
+            return {}
+
+    def _fetch_sleep(self, token: str) -> dict:
+        """Fetch last night's sleep total and the user's configured sleep goal."""
+        minutes_asleep = 0
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            data = self._api_get(f"{FITBIT_API}/1.2/user/-/sleep/date/{today}.json", token)
+            minutes_asleep = data.get("summary", {}).get("totalMinutesAsleep", 0)
+        except Exception as e:
+            logger.error(f"Fitbit sleep fetch failed: {e}")
+
+        goal_minutes = None
+        try:
+            goal_data = self._api_get(f"{FITBIT_API}/1.2/user/-/sleep/goal.json", token)
+            goal_minutes = goal_data.get("goal", {}).get("minDuration")
+        except Exception as e:
+            logger.error(f"Fitbit sleep goal fetch failed: {e}")
+
+        return {"minutes_asleep": minutes_asleep, "goal_minutes": goal_minutes}
+
+    def _fetch_weekly_azm(self, token: str) -> int:
+        """Sum Active Zone Minutes over the trailing 7 days — Fitbit's cardio-load equivalent."""
         try:
             end = datetime.now().strftime("%Y-%m-%d")
-            start = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
             data = self._api_get(
-                f"{FITBIT_API}/1/user/-/activities/{resource}/date/{start}/{end}.json",
+                f"{FITBIT_API}/1/user/-/activities/active-zone-minutes/date/{start}/{end}.json",
                 token,
             )
-            key = f"activities-{resource}"
-            entries = data.get(key, [])
-            return [
-                {"date": e.get("dateTime", ""), "value": float(e.get("value", 0))}
-                for e in entries
-            ]
+            entries = data.get("activities-active-zone-minutes", [])
+            return sum(e.get("value", {}).get("activeZoneMinutes", 0) for e in entries)
         except Exception as e:
-            logger.error(f"Fitbit {resource} fetch failed: {e}")
-            return []
-
-    def _fetch_weight(self, token: str) -> list:
-        """Fetch weight log entries for the last 2 years (in 30-day chunks)."""
-        try:
-            all_entries = []
-            end = datetime.now()
-            empty_streak = 0
-            for i in range(24):  # up to 24 months back
-                period_end = end - timedelta(days=30 * i)
-                period_start = period_end - timedelta(days=30)
-                url = (
-                    f"{FITBIT_API}/1/user/-/body/log/weight/date/"
-                    f"{period_start.strftime('%Y-%m-%d')}/{period_end.strftime('%Y-%m-%d')}.json"
-                )
-                try:
-                    data = self._api_get(url, token)
-                    entries = data.get("weight", [])
-                    if entries:
-                        all_entries.extend(entries)
-                        empty_streak = 0
-                    else:
-                        empty_streak += 1
-                        if empty_streak >= 3:
-                            break  # 3 consecutive empty months = no older data
-                except Exception:
-                    break
-            # Deduplicate by date and sort
-            seen = {}
-            for e in all_entries:
-                d = e.get("date", "")
-                if d not in seen:
-                    seen[d] = e.get("weight", 0)
-            sorted_dates = sorted(seen.keys())
-            return [{"date": d, "value": seen[d]} for d in sorted_dates]
-        except Exception as e:
-            logger.error(f"Fitbit weight fetch failed: {e}")
-            return []
+            logger.error(f"Fitbit active zone minutes fetch failed: {e}")
+            return 0
 
     # ── Font loading ───────────────────────────────────────────────
 
@@ -203,267 +215,105 @@ class FitnessModule(BaseModule):
         draw.text((cx - hw // 2, cy + 10), hint, fill=120, font=fonts["sm"])
         return img
 
-    def _draw(self, width, height, steps, distance, weight,
-              step_goal, weight_unit):
+    def _draw(self, width, height, steps, steps_goal, calories, calories_goal,
+              sleep_minutes, sleep_goal_minutes, weekly_azm, cardio_goal):
         img = Image.new("L", (width, height), 255)
         draw = ImageDraw.Draw(img)
         fonts = self._load_fonts()
-        margin = 10
+        margin = 14
 
         # Title bar
-        draw.text((margin, 6), "Fitness", fill=0, font=fonts["lg"])
+        draw.text((margin, 8), "Fitness", fill=0, font=fonts["lg"])
         now = datetime.now()
         date_str = now.strftime("%a, %b %d")
         dw = fonts["sm"].getlength(date_str)
-        draw.text((width - margin - dw, 10), date_str, fill=100, font=fonts["sm"])
-        title_y = 32
+        draw.text((width - margin - dw, 13), date_str, fill=100, font=fonts["sm"])
+        title_y = 36
         draw.line([(margin, title_y), (width - margin, title_y)], fill=180, width=1)
 
-        mid_x = width // 2
-        top_y = title_y + 4
-        top_h = (height - title_y) // 2
-        mid_y = title_y + top_h
-        cell_w = mid_x - margin
-        cell_h = mid_y - top_y
-        bottom_h = height - mid_y - 4
+        content_top = title_y + 16
+        content_h = height - content_top - margin
 
-        # Grid lines: vertical only in top half, horizontal full width
-        draw.line([(mid_x, top_y), (mid_x, mid_y)], fill=180, width=1)
-        draw.line([(margin, mid_y), (width - margin, mid_y)], fill=180, width=1)
+        left_w = int(width * 0.42)
+        right_x = margin + left_w + 24
+        right_w = width - right_x - margin
 
-        # Top-left: Steps
-        self._draw_bar_chart(
-            draw, margin, top_y, cell_w, cell_h, steps,
-            "Steps", fonts, goal=step_goal, fmt_int=True,
+        self._draw_cardio_ring(
+            draw, margin, content_top, left_w, content_h,
+            weekly_azm, cardio_goal, fonts,
         )
-        # Top-right: Distance
-        self._draw_bar_chart(
-            draw, mid_x + 1, top_y, cell_w, cell_h, distance,
-            "Distance (km)", fonts, fmt_float=True,
-        )
-        # Bottom full-width: Weight
-        self._draw_weight_chart(
-            draw, margin, mid_y + 1, width - 2 * margin, bottom_h,
-            weight, weight_unit, fonts,
-        )
+
+        row_gap = 14
+        row_h = (content_h - row_gap * 2) // 3
+        items = [
+            ("Steps", steps, steps_goal, False),
+            ("Calories", calories, calories_goal, False),
+            ("Sleep", sleep_minutes, sleep_goal_minutes, True),
+        ]
+        for i, (label, value, goal, is_time) in enumerate(items):
+            ry = content_top + i * (row_h + row_gap)
+            self._draw_goal_pill(draw, right_x, ry, right_w, row_h, label, value, goal, fonts, is_time)
 
         return img
 
-    def _draw_bar_chart(self, draw, x, y, w, h, data, title, fonts,
-                        goal=None, fmt_int=False, fmt_float=False):
-        pad = 8
+    def _draw_cardio_ring(self, draw, x, y, w, h, weekly_azm, goal, fonts):
+        cx = x + w // 2
+        cy = y + h // 2
+        radius = min(w, h) // 2 - 10
+        thickness = max(14, radius // 6)
 
-        # Title on the left, today's value on the right
-        draw.text((x + pad, y + 4), title, fill=60, font=fonts["sm"])
+        pct = min(weekly_azm / goal, 1.0) if goal else 0.0
 
-        today_val = data[-1]["value"] if data else 0
-        if fmt_int:
-            val_str = f"{int(today_val):,}"
-        elif fmt_float:
-            val_str = f"{today_val:.2f}"
+        bbox = [cx - radius, cy - radius, cx + radius, cy + radius]
+        draw.arc(bbox, 0, 360, fill=210, width=thickness)
+        if pct > 0:
+            end_angle = -90 + pct * 360
+            draw.arc(bbox, -90, end_angle, fill=30, width=thickness)
+
+        pct_str = f"{int(pct * 100)}%"
+        pw = fonts["xxl"].getlength(pct_str)
+        draw.text((cx - pw // 2, cy - 26), pct_str, fill=0, font=fonts["xxl"])
+
+        sub = "Weekly Cardio"
+        sw = fonts["sm"].getlength(sub)
+        draw.text((cx - sw // 2, cy + 22), sub, fill=90, font=fonts["sm"])
+
+        detail = f"{int(weekly_azm)} of {int(goal)} min"
+        dw = fonts["xs"].getlength(detail)
+        draw.text((cx - dw // 2, cy + 42), detail, fill=140, font=fonts["xs"])
+
+    def _draw_goal_pill(self, draw, x, y, w, h, label, value, goal, fonts, is_time=False):
+        pad_x = 14
+        pad_y = 10
+
+        draw.rounded_rectangle([x, y, x + w, y + h], radius=10, outline=180, width=1)
+
+        draw.text((x + pad_x, y + pad_y), label, fill=70, font=fonts["sm"])
+
+        if is_time:
+            hrs = int(value // 60)
+            mins = int(value % 60)
+            val_str = f"{hrs}h {mins}m"
         else:
-            val_str = f"{today_val}"
-        vw = fonts["xl"].getlength(val_str)
-        draw.text((x + w - pad - vw, y + 2), val_str, fill=0, font=fonts["xl"])
+            val_str = f"{int(value):,}"
+        vw = fonts["lg"].getlength(val_str)
+        draw.text((x + w - pad_x - vw, y + pad_y - 4), val_str, fill=0, font=fonts["lg"])
 
-        if not data:
-            cx = x + w // 2
-            msg = "No data"
-            mw = fonts["sm"].getlength(msg)
-            draw.text((cx - mw // 2, y + h // 2), msg, fill=140, font=fonts["sm"])
-            return
+        bar_x = x + pad_x
+        bar_w = w - pad_x * 2
+        bar_h = 12
+        bar_y = y + h - pad_y - bar_h - 14
 
-        # Chart area — reduced y-axis label space for 15 bars
-        chart_left = x + pad + 24
-        chart_right = x + w - pad
-        chart_top = y + 38
-        chart_bottom = y + h - 16
-        chart_w = chart_right - chart_left
-        chart_h = chart_bottom - chart_top
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=6, fill=225)
+        pct = min(value / goal, 1.0) if goal else 0.0
+        fill_w = int(bar_w * pct)
+        if fill_w > 0:
+            fill_w = max(fill_w, bar_h)
+            draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], radius=6, fill=40)
 
-        if chart_h < 20 or chart_w < 40:
-            return
-
-        values = [d["value"] for d in data]
-        max_val = max(values) if values else 1
-        if goal and goal > max_val:
-            max_val = goal * 1.1
-        if max_val == 0:
-            max_val = 1
-
-        # Y-axis labels (compact)
-        if fmt_float:
-            draw.text((x + 2, chart_top - 2), f"{max_val:.1f}", fill=150, font=fonts["xs"])
+        if is_time:
+            goal_str = f"Goal {int(goal // 60)}h {int(goal % 60)}m"
         else:
-            if max_val >= 1000:
-                top_label = f"{int(max_val) // 1000}k"
-            else:
-                top_label = f"{int(max_val)}"
-            draw.text((x + 2, chart_top - 2), top_label, fill=150, font=fonts["xs"])
-        draw.text((x + 2, chart_bottom - 8), "0", fill=150, font=fonts["xs"])
-
-        # Axes
-        draw.line([(chart_left, chart_top), (chart_left, chart_bottom)], fill=180, width=1)
-        draw.line([(chart_left, chart_bottom), (chart_right, chart_bottom)], fill=180, width=1)
-
-        # Goal line (dashed)
-        if goal and goal > 0:
-            goal_y = chart_bottom - int((goal / max_val) * chart_h)
-            goal_y = max(chart_top, min(chart_bottom, goal_y))
-            dash_len = 6
-            gap_len = 4
-            lx = chart_left
-            while lx < chart_right:
-                end = min(lx + dash_len, chart_right)
-                draw.line([(lx, goal_y), (end, goal_y)], fill=100, width=1)
-                lx = end + gap_len
-            gl = f"goal: {goal:,}"
-            glw = fonts["xs"].getlength(gl)
-            draw.text((chart_right - glw, goal_y - 11), gl, fill=100, font=fonts["xs"])
-
-        # Bars — tight spacing for 15 bars
-        n = len(values)
-        gap = 2
-        bar_w = max((chart_w - gap * (n + 1)) // n, 3)
-        total_used = bar_w * n + gap * (n + 1)
-        offset = chart_left + (chart_w - total_used) + gap  # right-align bars
-
-        for i, val in enumerate(values):
-            bx = offset + i * (bar_w + gap)
-            bar_h_px = int((val / max_val) * chart_h) if max_val > 0 else 0
-            bar_h_px = max(bar_h_px, 1)
-
-            fill = 40 if i == n - 1 else 120
-            draw.rectangle(
-                [bx, chart_bottom - bar_h_px, bx + bar_w, chart_bottom],
-                fill=fill,
-            )
-
-        # Day labels — only show every few days to avoid overlap
-        label_every = max(1, n // 5)  # ~5 labels across 15 bars
-        for i in range(n):
-            if i % label_every != 0 and i != n - 1:
-                continue
-            date_str = data[i].get("date", "")
-            if date_str:
-                try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    day_label = dt.strftime("%d")
-                except ValueError:
-                    day_label = ""
-                bx = offset + i * (bar_w + gap)
-                dlw = fonts["xs"].getlength(day_label)
-                draw.text(
-                    (bx + bar_w // 2 - dlw // 2, chart_bottom + 2),
-                    day_label, fill=140, font=fonts["xs"],
-                )
-
-    def _convert_weight(self, value, unit):
-        """Convert weight from metric (kg, API default) to display unit."""
-        if unit == "lbs":
-            return value * 2.20462
-        return value
-
-    def _draw_weight_chart(self, draw, x, y, w, h, data, unit, fonts):
-        pad = 8
-
-        # Title left, value right
-        draw.text((x + pad, y + 4), "Weight", fill=60, font=fonts["sm"])
-
-        if not data:
-            cx = x + w // 2
-            msg = "No weight data"
-            mw = fonts["sm"].getlength(msg)
-            draw.text((cx - mw // 2, y + h // 2), msg, fill=140, font=fonts["sm"])
-            return
-
-        latest = self._convert_weight(data[-1]["value"], unit)
-        unit_str = "lbs" if unit == "lbs" else "kg"
-        val_str = f"{latest:.1f} {unit_str}"
-        vw = fonts["xl"].getlength(val_str)
-        draw.text((x + w - pad - vw, y + 2), val_str, fill=0, font=fonts["xl"])
-
-        if len(data) < 2:
-            return
-
-        # Chart area
-        chart_left = x + pad + 24
-        chart_right = x + w - pad
-        chart_top = y + 38
-        chart_bottom = y + h - 16
-        chart_w = chart_right - chart_left
-        chart_h = chart_bottom - chart_top
-
-        if chart_h < 20 or chart_w < 40:
-            return
-
-        weights = [self._convert_weight(d["value"], unit) for d in data]
-
-        min_w = min(weights)
-        max_w = max(weights)
-        range_w = max_w - min_w if max_w != min_w else 1.0
-        min_w -= range_w * 0.15
-        max_w += range_w * 0.15
-        range_w = max_w - min_w
-
-        # Y-axis labels
-        draw.text((x + 2, chart_top - 2), f"{max_w:.0f}", fill=150, font=fonts["xs"])
-        draw.text((x + 2, chart_bottom - 8), f"{min_w:.0f}", fill=150, font=fonts["xs"])
-
-        # Axes
-        draw.line([(chart_left, chart_top), (chart_left, chart_bottom)], fill=180, width=1)
-        draw.line([(chart_left, chart_bottom), (chart_right, chart_bottom)], fill=180, width=1)
-
-        # Plot line
-        n = len(weights)
-        coords = []
-        for i, wt in enumerate(weights):
-            px = chart_left + (i * chart_w // (n - 1) if n > 1 else chart_w // 2)
-            py = chart_bottom - int((wt - min_w) / range_w * chart_h)
-            coords.append((px, py))
-
-        for i in range(len(coords) - 1):
-            draw.line([coords[i], coords[i + 1]], fill=60, width=2)
-
-        # Dot on latest point
-        last = coords[-1]
-        draw.ellipse([last[0] - 4, last[1] - 4, last[0] + 4, last[1] + 4], fill=0)
-
-        # Vertical lines at year boundaries
-        n = len(data)
-        dates = []
-        for entry in data:
-            try:
-                dates.append(datetime.strptime(entry["date"], "%Y-%m-%d"))
-            except (ValueError, KeyError):
-                dates.append(None)
-
-        for i, dt in enumerate(dates):
-            if dt is None:
-                continue
-            if dt.month == 1 and dt.day <= 15:
-                # Check previous entry was prior year
-                prev = next((dates[j] for j in range(i - 1, -1, -1) if dates[j]), None)
-                if prev and prev.year < dt.year:
-                    px = chart_left + (i * chart_w // (n - 1) if n > 1 else chart_w // 2)
-                    draw.line([(px, chart_top), (px, chart_bottom)], fill=200, width=1)
-                    yr_label = f"'{str(dt.year)[2:]}"
-                    yw = int(fonts["xs"].getlength(yr_label))
-                    draw.text((px - yw // 2, chart_top - 11), yr_label, fill=140, font=fonts["xs"])
-
-        # X-axis date labels — "Mar '26" format, ~5 evenly spaced
-        label_indices = sorted(set(
-            [0] + [int(i * (n - 1) / 4) for i in range(1, 4)] + [n - 1]
-        ))
-        prev_label_right = -999
-        for idx in label_indices:
-            dt = dates[idx]
-            if dt is None:
-                continue
-            label = f"{dt.strftime('%b')} '{str(dt.year)[2:]}"
-            px = chart_left + (idx * chart_w // (n - 1) if n > 1 else chart_w // 2)
-            lw = int(fonts["xs"].getlength(label))
-            lx = max(chart_left, min(px - lw // 2, chart_right - lw))
-            if lx > prev_label_right + 2:
-                draw.text((lx, chart_bottom + 3), label, fill=140, font=fonts["xs"])
-                prev_label_right = lx + lw
+            goal_str = f"Goal {int(goal):,}"
+        gw = fonts["xs"].getlength(goal_str)
+        draw.text((x + w - pad_x - gw, bar_y + bar_h + 4), goal_str, fill=130, font=fonts["xs"])

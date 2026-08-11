@@ -87,3 +87,6 @@ Update:
 ===========================
 git pull
 sudo systemctl restart einkpi
+
+or all at one with following:
+cd ~/einkpi && git pull && sudo systemctl restart einkpi

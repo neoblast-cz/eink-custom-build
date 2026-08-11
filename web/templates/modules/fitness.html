@@ -5,15 +5,22 @@
 
 <div class="settings-form">
   <form method="POST">
-    <label for="weight_unit">Weight Unit</label>
-    <select id="weight_unit" name="weight_unit">
-      <option value="kg" {{ 'selected' if settings.weight_unit == 'kg' or not settings.weight_unit else '' }}>Kilograms (kg)</option>
-      <option value="lbs" {{ 'selected' if settings.weight_unit == 'lbs' else '' }}>Pounds (lbs)</option>
-    </select>
-
-    <label for="step_goal">Daily Step Goal</label>
+    <label for="step_goal">Daily Step Goal (fallback if Fitbit has none set)</label>
     <input type="number" id="step_goal" name="step_goal"
            value="{{ settings.step_goal | default(10000) }}" min="1000" max="100000">
+
+    <label for="calorie_goal">Daily Calorie Goal (fallback if Fitbit has none set)</label>
+    <input type="number" id="calorie_goal" name="calorie_goal"
+           value="{{ settings.calorie_goal | default(2500) }}" min="500" max="10000">
+
+    <label for="sleep_goal_hours">Sleep Goal (hours, fallback if Fitbit has none set)</label>
+    <input type="number" id="sleep_goal_hours" name="sleep_goal_hours" step="0.5"
+           value="{{ settings.sleep_goal_hours | default(8) }}" min="4" max="12">
+
+    <label for="weekly_cardio_goal">Weekly Cardio Goal (Active Zone Minutes)</label>
+    <input type="number" id="weekly_cardio_goal" name="weekly_cardio_goal"
+           value="{{ settings.weekly_cardio_goal | default(150) }}" min="30" max="1000">
+    <p class="hint">Active Zone Minutes is Fitbit's cardio-load metric — 150/week matches the standard WHO activity guideline.</p>
 
     <div class="form-actions">
       <button type="submit" class="btn-primary">Save Settings</button>
@@ -28,6 +35,7 @@
 
   {% if authorized %}
     <p style="color: #6f6;">Authorized with Fitbit</p>
+    <p class="hint">Sleep data requires the "sleep" scope — re-authorize if you connected before this was added.</p>
     <button class="btn-secondary" onclick="startFitbitAuth()">Re-authorize</button>
   {% else %}
     <p class="hint">Since the Pi serves HTTP but Fitbit requires HTTPS redirects,
