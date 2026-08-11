@@ -3,8 +3,9 @@ import logging
 import urllib.request
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from modules.base import BaseModule
+from modules import theme
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,10 @@ class TasksModule(BaseModule):
 
     def render(self, width: int, height: int, settings: dict) -> Image.Image:
         todos = self._fetch_habitica_todos(settings)
+        if not settings.get("show_completed"):
+            todos = [t for t in todos if t["status"] != "completed"]
+        max_tasks = int(settings.get("max_tasks", 15) or 15)
+        todos = todos[:max_tasks]
         return self._draw(width, height, todos, settings)
 
     def default_settings(self) -> dict:
@@ -80,55 +85,37 @@ class TasksModule(BaseModule):
             logger.error(f"Habitica todos fetch failed: {e}")
             return []
 
-    def _load_fonts(self):
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/segoeui.ttf",
-            "C:/Windows/Fonts/segoeuib.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ]
-        fonts = {}
-        for size_name, size in [("lg", 26), ("md", 17), ("sm", 13), ("sub", 15)]:
-            loaded = False
-            for path in font_paths:
-                try:
-                    fonts[size_name] = ImageFont.truetype(path, size)
-                    loaded = True
-                    break
-                except OSError:
-                    continue
-            if not loaded:
-                fonts[size_name] = ImageFont.load_default()
-        return fonts
-
     def _draw(self, width: int, height: int, todos: list, settings: dict) -> Image.Image:
-        img = Image.new("L", (width, height), 255)
+        img = Image.new("L", (width, height), theme.SURFACE)
         draw = ImageDraw.Draw(img)
-        fonts = self._load_fonts()
+        fonts = theme.load_fonts()
 
         margin = 20
         y = margin
 
         # Title bar
-        draw.text((margin, y), "Tasks", fill=0, font=fonts["lg"])
+        draw.text((margin, y), "Tasks", fill=theme.ON_SURFACE, font=fonts["headline"])
         tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
         date_str = datetime.now(tz).strftime("%a, %b %d")
-        date_w = fonts["md"].getlength(date_str)
-        draw.text((width - margin - date_w, y + 4), date_str, fill=100, font=fonts["md"])
+        date_w = fonts["body_lg"].getlength(date_str)
+        draw.text((width - margin - date_w, y + 4), date_str, fill=theme.ON_SURFACE_VARIANT, font=fonts["body_lg"])
         y += 40
 
-        draw.line([(margin, y), (width - margin, y)], fill=0, width=2)
-        y += 8
+        theme.draw_divider(draw, margin, y, width - margin)
+        y += 16
+
+        pad = 15
+        theme.draw_card(draw, (margin, y, width - margin, height - margin),
+                         fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
 
         hab = settings.get("_habitica_settings", {})
         has_creds = bool(hab.get("habitica_user_id")) and bool(hab.get("habitica_api_token"))
 
         self._draw_task_list(
             draw, todos,
-            x=margin, y=y,
-            w=width - 2 * margin,
-            h=height - y - margin,
+            x=margin + pad, y=y + pad,
+            w=width - 2 * (margin + pad),
+            h=height - margin - pad - (y + pad),
             fonts=fonts,
             empty_msg="Not configured" if not has_creds else "No to-dos",
             empty_hint="Set Habitica credentials in Habits settings" if not has_creds else None,
@@ -143,9 +130,9 @@ class TasksModule(BaseModule):
         max_y = y + h
 
         if not tasks:
-            draw.text((x, y), empty_msg, fill=80, font=fonts["md"])
+            draw.text((x, y), empty_msg, fill=theme.ON_SURFACE_VARIANT, font=fonts["body_lg"])
             if empty_hint:
-                draw.text((x, y + 24), empty_hint, fill=120, font=fonts["sm"])
+                draw.text((x, y + 24), empty_hint, fill=theme.DISABLED, font=fonts["body"])
             return
 
         incomplete = [t for t in tasks if t["status"] == "needsAction"]
@@ -156,29 +143,28 @@ class TasksModule(BaseModule):
 
         for task in incomplete:
             if cy + row_h > max_y:
-                draw.text((x, cy), "...", fill=100, font=fonts["md"])
+                draw.text((x, cy), "…", fill=theme.ON_SURFACE_VARIANT, font=fonts["body_lg"])
                 return
 
             bx, by = x, cy + 2
-            draw.rectangle([bx, by, bx + checkbox_size, by + checkbox_size], outline=0, width=2)
+            draw.rounded_rectangle([bx, by, bx + checkbox_size, by + checkbox_size],
+                                    radius=theme.RADIUS_XS, outline=theme.ON_SURFACE, width=2)
 
             due_str = ""
             due_w = 0
             if task.get("due"):
                 due_str = task["due"].strftime("%b %d")
-                due_w = fonts["sm"].getlength(due_str) + 8
+                due_w = fonts["label"].getlength(due_str) + theme.SPACE_SM * 2
 
             title = task["title"]
             text_x = x + checkbox_size + 8
             avail_w = max_title_w - due_w
-            if fonts["md"].getlength(title) > avail_w:
-                while fonts["md"].getlength(title + "..") > avail_w and len(title) > 1:
-                    title = title[:-1]
-                title += ".."
-            draw.text((text_x, cy - 1), title, fill=0, font=fonts["md"])
+            title = theme.truncate_to_width(title, fonts["body_lg"], avail_w)
+            draw.text((text_x, cy - 1), title, fill=theme.ON_SURFACE, font=fonts["body_lg"])
 
             if due_str:
-                draw.text((x + w - due_w + 4, cy + 1), due_str, fill=100, font=fonts["sm"])
+                theme.draw_chip(draw, (x + w, cy - 1), due_str, fonts["label"],
+                                 align="right", valign="top", fill=theme.SURFACE_CONTAINER_HIGH)
 
             cy += row_h
 
@@ -188,12 +174,12 @@ class TasksModule(BaseModule):
 
             cy += 4
             label = " Done "
-            label_w = fonts["sm"].getlength(label)
+            label_w = fonts["body"].getlength(label)
             line_y = cy + 7
             center = x + w // 2
-            draw.line([(x, line_y), (center - label_w // 2 - 3, line_y)], fill=180, width=1)
-            draw.text((center - label_w // 2, cy), label, fill=150, font=fonts["sm"])
-            draw.line([(center + label_w // 2 + 3, line_y), (x + w, line_y)], fill=180, width=1)
+            theme.draw_divider(draw, x, line_y, center - label_w // 2 - 3)
+            draw.text((center - label_w // 2, cy), label, fill=theme.DISABLED, font=fonts["body"])
+            theme.draw_divider(draw, center + label_w // 2 + 3, line_y, x + w)
             cy += 22
 
             for task in completed:
@@ -201,19 +187,16 @@ class TasksModule(BaseModule):
                     break
 
                 bx, by = x, cy + 2
-                draw.rectangle([bx, by, bx + checkbox_size, by + checkbox_size],
-                                outline=100, fill=200, width=2)
-                draw.line([(bx + 2, by + 6), (bx + 5, by + 9)], fill=60, width=2)
-                draw.line([(bx + 5, by + 9), (bx + 10, by + 2)], fill=60, width=2)
+                draw.rounded_rectangle([bx, by, bx + checkbox_size, by + checkbox_size],
+                                        radius=theme.RADIUS_XS,
+                                        outline=theme.ON_SURFACE_VARIANT, fill=theme.SURFACE_CONTAINER_HIGH, width=2)
+                draw.line([(bx + 2, by + 6), (bx + 5, by + 9)], fill=theme.ON_SURFACE_VARIANT, width=2)
+                draw.line([(bx + 5, by + 9), (bx + 10, by + 2)], fill=theme.ON_SURFACE_VARIANT, width=2)
 
-                title = task["title"]
+                title = theme.truncate_to_width(task["title"], fonts["body_lg"], max_title_w)
                 text_x = x + checkbox_size + 8
-                if fonts["md"].getlength(title) > max_title_w:
-                    while fonts["md"].getlength(title + "..") > max_title_w and len(title) > 1:
-                        title = title[:-1]
-                    title += ".."
-                draw.text((text_x, cy - 1), title, fill=150, font=fonts["md"])
-                title_w = fonts["md"].getlength(title)
-                draw.line([(text_x, cy + 8), (text_x + title_w, cy + 8)], fill=150, width=1)
+                draw.text((text_x, cy - 1), title, fill=theme.DISABLED, font=fonts["body_lg"])
+                title_w = fonts["body_lg"].getlength(title)
+                draw.line([(text_x, cy + 8), (text_x + title_w, cy + 8)], fill=theme.DISABLED, width=1)
 
                 cy += row_h

@@ -8,6 +8,7 @@ os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 from flask import (
     Flask, render_template, request, redirect, url_for, jsonify, send_file,
 )
+from web import analytics_data
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +239,15 @@ def create_app(config, module_registry, scheduler):
         if path.exists():
             path.unlink()
         return redirect(url_for("photos_list"))
+
+    # ---- Local-only health data analytics (reads the gitignored "Google Health"
+    # export folder; not part of the e-ink rendering pipeline or the Pi deploy) ----
+
+    @app.route("/analytics")
+    def analytics():
+        if not analytics_data.available():
+            return render_template("analytics.html", has_data=False)
+        return render_template("analytics.html", has_data=True, **analytics_data.get_dashboard_data())
 
     # ---- Fitbit OAuth routes for Fitness module ----
 

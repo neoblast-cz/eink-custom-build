@@ -299,6 +299,29 @@ input[type="file"] {
   padding: 3rem 0;
 }
 
+/* Analytics dashboard */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 1.2rem;
+  margin-top: 1rem;
+}
+
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+}
+
+.chart-card.wide { grid-column: 1 / -1; }
+
+.chart-card h3 { margin-bottom: 0.9rem; }
+
+.chart-card .hint { margin-top: 0.6rem; margin-bottom: 0; }
+
+.chart-card canvas { max-height: 320px; }
+
 /* Rotation entries */
 .rotation-entry {
   display: flex;

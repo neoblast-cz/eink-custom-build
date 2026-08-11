@@ -2,8 +2,9 @@ import calendar
 import logging
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from modules.base import BaseModule
+from modules import theme
 
 logger = logging.getLogger(__name__)
 
@@ -87,54 +88,48 @@ class CalendarModule(BaseModule):
                 counts[dt.day] = counts.get(dt.day, 0) + 1
         return counts
 
-    def _load_fonts(self):
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/segoeui.ttf",
-            "C:/Windows/Fonts/segoeuib.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ]
-        fonts = {}
-        for size_name, size in [("lg", 26), ("md", 17), ("sm", 13), ("xs", 11)]:
-            loaded = False
-            for path in font_paths:
-                try:
-                    fonts[size_name] = ImageFont.truetype(path, size)
-                    loaded = True
-                    break
-                except OSError:
-                    continue
-            if not loaded:
-                fonts[size_name] = ImageFont.load_default()
-        return fonts
-
     def _draw(self, width: int, height: int, events: list, settings: dict) -> Image.Image:
-        img = Image.new("L", (width, height), 255)
+        img = Image.new("L", (width, height), theme.SURFACE)
         draw = ImageDraw.Draw(img)
-        fonts = self._load_fonts()
+        fonts = theme.load_fonts()
 
         tz = ZoneInfo(settings.get("_timezone", "Europe/Brussels"))
         event_day_counts = self._get_event_day_counts(events, tz)
 
-        # Layout: left panel uses full height for month grid, right panel for events
+        # Layout: two M3 surface-container cards — month grid on the left,
+        # upcoming events on the right. A filled card at this size delta
+        # (240 vs 255) is subtle on real e-ink, so pair it with a hairline
+        # outline to keep each panel legible as its own region.
+        outer_margin = 10
         left_w = 300
-        self._draw_month_grid(draw, 15, 15, left_w - 30, height - 30, event_day_counts, fonts, tz)
+        gutter = 20
+        pad = 15
 
-        # Vertical divider
-        draw.line([(left_w, 10), (left_w, height - 10)], fill=180, width=1)
+        left_card = (outer_margin, outer_margin, left_w, height - outer_margin)
+        right_card = (left_w + gutter, outer_margin, width - outer_margin, height - outer_margin)
+        theme.draw_card(draw, left_card, fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
+        theme.draw_card(draw, right_card, fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
 
-        # Right panel: events list
-        self._draw_events(draw, left_w + 20, 15, width - 15, height - 15, events, fonts)
+        self._draw_month_grid(
+            draw, left_card[0] + pad, left_card[1] + pad,
+            (left_card[2] - left_card[0]) - pad * 2, (left_card[3] - left_card[1]) - pad * 2,
+            event_day_counts, fonts, tz,
+        )
+
+        self._draw_events(
+            draw, right_card[0] + pad, right_card[1] + pad,
+            right_card[2] - pad, right_card[3] - pad, events, fonts,
+        )
 
         return img
 
     def _draw_month_grid(self, draw, x, y, w, h, event_day_counts, fonts, tz=None):
         today = datetime.now(tz)
+        start_y = y
 
         # Month/year header
         header = today.strftime("%B %Y")
-        draw.text((x, y), header, fill=0, font=fonts["lg"])
+        draw.text((x, y), header, fill=theme.ON_SURFACE, font=fonts["headline"])
         y += 42
 
         # Day-of-week headers
@@ -142,17 +137,17 @@ class CalendarModule(BaseModule):
         cell_w = w // 7
         for i, d in enumerate(days):
             cx = x + i * cell_w
-            draw.text((cx + (cell_w - fonts["sm"].getlength(d)) // 2, y), d, fill=100, font=fonts["sm"])
+            draw.text((cx + (cell_w - fonts["body"].getlength(d)) // 2, y), d, fill=theme.ON_SURFACE_VARIANT, font=fonts["body"])
         y += 24
 
         # Separator
-        draw.line([(x, y), (x + w, y)], fill=200, width=1)
+        theme.draw_divider(draw, x, y, x + w)
         y += 8
 
         # Build calendar grid with neighbor month days filled in
         cal = calendar.monthcalendar(today.year, today.month)
         num_weeks = len(cal)
-        remaining_h = h - (y - 15)
+        remaining_h = h - (y - start_y)
         row_h = min(remaining_h // num_weeks, 65)
         cell_h = row_h
 
@@ -183,12 +178,12 @@ class CalendarModule(BaseModule):
                         neighbor_day = next_day_counter
                         next_day_counter += 1
 
-                    text_w = fonts["md"].getlength(str(neighbor_day))
+                    text_w = fonts["body_lg"].getlength(str(neighbor_day))
                     text_x = cx + (cell_w - text_w) // 2
-                    draw.text((text_x, y + 8), str(neighbor_day), fill=200, font=fonts["md"])
+                    draw.text((text_x, y + 8), str(neighbor_day), fill=theme.OUTLINE, font=fonts["body_lg"])
                     continue
 
-                text_w = fonts["md"].getlength(str(day))
+                text_w = fonts["body_lg"].getlength(str(day))
                 text_x = cx + (cell_w - text_w) // 2
 
                 if day == today.day:
@@ -196,11 +191,11 @@ class CalendarModule(BaseModule):
                     r = 16
                     draw.ellipse(
                         [cell_center_x - r, y + 4, cell_center_x + r, y + 4 + r * 2],
-                        fill=0,
+                        fill=theme.ON_SURFACE,
                     )
-                    draw.text((text_x, y + 8), str(day), fill=255, font=fonts["md"])
+                    draw.text((text_x, y + 8), str(day), fill=theme.SURFACE, font=fonts["body_lg"])
                 else:
-                    draw.text((text_x, y + 8), str(day), fill=0, font=fonts["md"])
+                    draw.text((text_x, y + 8), str(day), fill=theme.ON_SURFACE, font=fonts["body_lg"])
 
                 # Event indicator dots below the day number
                 num_events = event_day_counts.get(day, 0)
@@ -213,20 +208,20 @@ class CalendarModule(BaseModule):
                     dot_start_x = cell_center_x - total_w // 2
                     for di in range(dot_count):
                         dx = dot_start_x + di * dot_spacing
-                        fill = 255 if day == today.day else 0
+                        fill = theme.SURFACE if day == today.day else theme.ON_SURFACE
                         draw.ellipse([dx, dot_y, dx + dot_r * 2, dot_y + dot_r * 2], fill=fill)
 
             y += cell_h
 
     def _draw_events(self, draw, x, y, max_x, max_y, events, fonts):
-        draw.text((x, y), "Upcoming Events", fill=0, font=fonts["lg"])
+        draw.text((x, y), "Upcoming Events", fill=theme.ON_SURFACE, font=fonts["headline"])
         y += 30
 
         if not events:
             msg = "No upcoming events"
             ics_hint = "Set an ICS URL in module settings"
-            draw.text((x, y), msg, fill=120, font=fonts["md"])
-            draw.text((x, y + 24), ics_hint, fill=160, font=fonts["sm"])
+            draw.text((x, y), msg, fill=theme.ON_SURFACE_VARIANT, font=fonts["body_lg"])
+            draw.text((x, y + 24), ics_hint, fill=theme.DISABLED, font=fonts["body"])
             return
 
         # Group events by date key for day indicator logic
@@ -246,51 +241,44 @@ class CalendarModule(BaseModule):
                 if y + 16 + entry_h > max_y:
                     break
                 month_label = dt.strftime("%B")
-                draw.line([(x, y + 5), (x + 8, y + 5)], fill=150, width=1)
-                mlw = fonts["xs"].getlength(month_label)
-                draw.text((x + 12, y - 1), month_label, fill=120, font=fonts["xs"])
-                draw.line([(x + 16 + mlw, y + 5), (max_x, y + 5)], fill=150, width=1)
+                theme.draw_divider(draw, x, y + 5, x + 8, tone=theme.DISABLED)
+                mlw = fonts["label_sm"].getlength(month_label)
+                draw.text((x + 12, y - 1), month_label, fill=theme.ON_SURFACE_VARIANT, font=fonts["label_sm"])
+                theme.draw_divider(draw, x + 16 + mlw, y + 5, max_x, tone=theme.DISABLED)
                 y += 14
             last_month_key = month_key
 
             if y + entry_h > max_y:
-                draw.text((text_x, y), "...", fill=100, font=fonts["md"])
+                draw.text((text_x, y), "…", fill=theme.ON_SURFACE_VARIANT, font=fonts["body_lg"])
                 break
 
             # Draw day circle only for first event of each day
             if date_key != last_date_key:
                 day_str = str(dt.day)
-                day_w = fonts["sm"].getlength(day_str)
+                day_w = fonts["body"].getlength(day_str)
                 circle_r = 14
                 circle_cx = x + indicator_w // 2
                 circle_cy = y + 10
                 draw.ellipse(
                     [circle_cx - circle_r, circle_cy - circle_r,
                      circle_cx + circle_r, circle_cy + circle_r],
-                    outline=0, width=2,
+                    outline=theme.ON_SURFACE, width=2,
                 )
                 draw.text(
                     (circle_cx - day_w // 2, circle_cy - 7),
-                    day_str, fill=0, font=fonts["sm"],
+                    day_str, fill=theme.ON_SURFACE, font=fonts["body"],
                 )
                 last_date_key = date_key
 
             # Event title
-            title = event["summary"]
-            max_title_w = max_x - text_x
-            if fonts["md"].getlength(title) > max_title_w:
-                while fonts["md"].getlength(title + "...") > max_title_w and len(title) > 0:
-                    title = title[:-1]
-                title += "..."
-            draw.text((text_x, y), title, fill=0, font=fonts["md"])
+            title = theme.truncate_to_width(event["summary"], fonts["body_lg"], max_x - text_x)
+            draw.text((text_x, y), title, fill=theme.ON_SURFACE, font=fonts["body_lg"])
 
-            # Time label
-            if event["all_day"]:
-                label = "All day"
-            else:
-                label = dt.strftime("%H:%M")
-            draw.text((text_x, y + 19), label, fill=100, font=fonts["sm"])
+            # Time chip
+            label = "All day" if event["all_day"] else dt.strftime("%H:%M")
+            theme.draw_chip(draw, (text_x, y + 19), label, fonts["label"],
+                             align="left", valign="top", fill=theme.SURFACE_CONTAINER_HIGH)
 
             y += entry_h - 8
-            draw.line([(text_x, y), (max_x, y)], fill=220, width=1)
+            theme.draw_divider(draw, text_x, y, max_x)
             y += 8

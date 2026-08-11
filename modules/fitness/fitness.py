@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import time
 import base64
 import urllib.request
@@ -7,8 +8,9 @@ import urllib.parse
 import urllib.error
 from pathlib import Path
 from datetime import datetime, timedelta
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from modules.base import BaseModule
+from modules import theme
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +51,16 @@ class FitnessModule(BaseModule):
             float(settings.get("sleep_goal_hours", 8)) * 60
         )
 
+        # How far into the week we are, as a fraction — e.g. 48h into a week
+        # is 2/7, so a linear day-by-day pace should be at 2x the daily goal.
+        now = datetime.now()
+        week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+        pace_pct = min((now - week_start).total_seconds() / (7 * 86400), 1.0)
+
         return self._draw(
             width, height, steps, steps_goal, distance, distance_goal,
             calories, calories_goal, sleep_minutes, sleep_goal_minutes,
-            weekly_steps, weekly_steps_goal, today_steps,
+            weekly_steps, weekly_steps_goal, today_steps, pace_pct,
         )
 
     def default_settings(self) -> dict:
@@ -198,61 +206,30 @@ class FitnessModule(BaseModule):
             logger.error(f"Fitbit weekly steps fetch failed: {e}")
             return 0, 0
 
-    # ── Font loading ───────────────────────────────────────────────
-
-    def _load_fonts(self):
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/segoeuib.ttf",
-            "C:/Windows/Fonts/segoeui.ttf",
-        ]
-        fonts = {}
-        for size_name, size in [("xxl", 42), ("xl", 32), ("lg", 24), ("md", 16),
-                                 ("sm", 13), ("xs", 10)]:
-            loaded = False
-            for path in font_paths:
-                try:
-                    fonts[size_name] = ImageFont.truetype(path, size)
-                    loaded = True
-                    break
-                except OSError:
-                    continue
-            if not loaded:
-                fonts[size_name] = ImageFont.load_default()
-        return fonts
-
     # ── Drawing ────────────────────────────────────────────────────
 
     def _draw_not_authorized(self, width: int, height: int) -> Image.Image:
-        img = Image.new("L", (width, height), 255)
+        img = Image.new("L", (width, height), theme.SURFACE)
         draw = ImageDraw.Draw(img)
-        fonts = self._load_fonts()
-        cx, cy = width // 2, height // 2
-        msg = "Fitness"
-        mw = fonts["lg"].getlength(msg)
-        draw.text((cx - mw // 2, cy - 30), msg, fill=0, font=fonts["lg"])
-        hint = "Authorize Fitbit in module settings"
-        hw = fonts["sm"].getlength(hint)
-        draw.text((cx - hw // 2, cy + 10), hint, fill=120, font=fonts["sm"])
+        theme.draw_empty_state(draw, width, height, "Fitness", "Authorize Fitbit in module settings")
         return img
 
     def _draw(self, width, height, steps, steps_goal, distance, distance_goal,
               calories, calories_goal, sleep_minutes, sleep_goal_minutes,
-              weekly_steps, weekly_steps_goal, today_steps):
-        img = Image.new("L", (width, height), 255)
+              weekly_steps, weekly_steps_goal, today_steps, pace_pct):
+        img = Image.new("L", (width, height), theme.SURFACE)
         draw = ImageDraw.Draw(img)
-        fonts = self._load_fonts()
+        fonts = theme.load_fonts()
         margin = 14
 
         # Title bar
-        draw.text((margin, 8), "Fitness", fill=0, font=fonts["lg"])
+        draw.text((margin, 8), "Fitness", fill=theme.ON_SURFACE, font=fonts["headline"])
         now = datetime.now()
         date_str = now.strftime("%a, %b %d")
-        dw = fonts["sm"].getlength(date_str)
-        draw.text((width - margin - dw, 13), date_str, fill=100, font=fonts["sm"])
+        dw = fonts["body"].getlength(date_str)
+        draw.text((width - margin - dw, 13), date_str, fill=theme.ON_SURFACE_VARIANT, font=fonts["body"])
         title_y = 36
-        draw.line([(margin, title_y), (width - margin, title_y)], fill=180, width=1)
+        theme.draw_divider(draw, margin, title_y, width - margin)
 
         content_top = title_y + 16
         content_h = height - content_top - margin
@@ -263,89 +240,169 @@ class FitnessModule(BaseModule):
 
         self._draw_steps_ring(
             draw, margin, content_top, left_w, content_h,
-            weekly_steps, weekly_steps_goal, today_steps, fonts,
+            weekly_steps, weekly_steps_goal, today_steps, pace_pct, fonts,
         )
 
         row_gap = 10
         row_h = (content_h - row_gap * 3) // 4
         items = [
-            ("Steps", steps, steps_goal, "int"),
-            ("Distance", distance, distance_goal, "km"),
-            ("Calories", calories, calories_goal, "int"),
-            ("Sleep", sleep_minutes, sleep_goal_minutes, "time"),
+            ("Steps", steps, steps_goal, "int", "footsteps"),
+            ("Distance", distance, distance_goal, "km", "pin"),
+            ("Calories", calories, calories_goal, "int", "flame"),
+            ("Sleep", sleep_minutes, sleep_goal_minutes, "time", "moon"),
         ]
-        for i, (label, value, goal, fmt) in enumerate(items):
+        for i, (label, value, goal, fmt, glyph) in enumerate(items):
             ry = content_top + i * (row_h + row_gap)
-            self._draw_goal_pill(draw, right_x, ry, right_w, row_h, label, value, goal, fonts, fmt)
+            self._draw_goal_pill(draw, right_x, ry, right_w, row_h, label, value, goal, fonts, fmt, glyph)
 
         return img
 
-    def _draw_steps_ring(self, draw, x, y, w, h, weekly_steps, goal, today_steps, fonts):
+    def _draw_steps_ring(self, draw, x, y, w, h, weekly_steps, goal, today_steps, pace_pct, fonts):
         cx = x + w // 2
         cy = y + h // 2
         radius = min(w, h) // 2 - 10
         thickness = max(34, radius // 2)
 
         pct = min(weekly_steps / goal, 1.0) if goal else 0.0
+        start_angle = 90  # 6 o'clock; fill sweeps clockwise from here
 
         bbox = [cx - radius, cy - radius, cx + radius, cy + radius]
-        draw.arc(bbox, 0, 360, fill=210, width=thickness)
+        draw.arc(bbox, 0, 360, fill=theme.SURFACE_CONTAINER_HIGHEST, width=thickness)
         if pct > 0:
-            # Fill starts at 6 o'clock (PIL angle 90) and sweeps clockwise.
-            start_angle = 90
+            # M3 circular progress indicator: a small angular gap separates the
+            # active arc from the remaining track, with rounded stroke caps on
+            # the active arc's ends. This ring is unusually thick, so a cap
+            # radius of a full half-thickness reads as a bulging blob and can
+            # swallow a small gap outright — use a softer partial rounding and
+            # size the gap to stay visible past the cap's angular footprint.
+            cap_r = thickness * 0.3
             end_angle = start_angle + pct * 360
-            draw.arc(bbox, start_angle, end_angle, fill=30, width=thickness)
+            gap_deg = min(20, pct * 360 * 0.4) if pct < 0.98 else 0
+            active_end_angle = end_angle - gap_deg
+
+            draw.arc(bbox, start_angle, active_end_angle, fill=theme.ON_SURFACE, width=thickness)
+            if gap_deg > 0:
+                # Erase a sliver back to the plain background so the track
+                # visibly resumes after the gap.
+                draw.arc(bbox, active_end_angle, end_angle, fill=theme.SURFACE, width=thickness)
+            self._draw_round_cap(draw, cx, cy, radius, cap_r * 2, start_angle, theme.ON_SURFACE)
+            self._draw_round_cap(draw, cx, cy, radius, cap_r * 2, active_end_angle, theme.ON_SURFACE)
+
+        # Pace marker: a dashed radial tick showing where a linear day-by-day
+        # pace toward the weekly goal would put you right now.
+        self._draw_pace_marker(draw, cx, cy, radius, thickness, start_angle, pace_pct)
 
         pct_str = f"{int(pct * 100)}%"
-        pw = fonts["xxl"].getlength(pct_str)
-        draw.text((cx - pw // 2, cy - 26), pct_str, fill=0, font=fonts["xxl"])
+        pw = fonts["display"].getlength(pct_str)
+        draw.text((cx - pw // 2, cy - 26), pct_str, fill=theme.ON_SURFACE, font=fonts["display"])
 
         sub = "Weekly Steps"
-        sw = fonts["sm"].getlength(sub)
-        draw.text((cx - sw // 2, cy + 22), sub, fill=90, font=fonts["sm"])
+        sw = fonts["body"].getlength(sub)
+        draw.text((cx - sw // 2, cy + 22), sub, fill=theme.ON_SURFACE_VARIANT, font=fonts["body"])
 
         detail = f"{int(weekly_steps):,} of {int(goal):,}"
-        dw = fonts["xs"].getlength(detail)
-        draw.text((cx - dw // 2, cy + 42), detail, fill=140, font=fonts["xs"])
+        dw = fonts["label"].getlength(detail)
+        draw.text((cx - dw // 2, cy + 42), detail, fill=theme.DISABLED, font=fonts["label"])
 
         # "+N today" badge, upper-right of the ring — mirrors the Google Health style
         if today_steps > 0:
             badge_str = f"+{int(today_steps):,}"
-            bw = fonts["sm"].getlength(badge_str)
-            bcx = cx + int(radius * 0.62)
-            bcy = cy - int(radius * 0.8)
-            pad = 6
-            box = [bcx - bw // 2 - pad, bcy - 10, bcx + bw // 2 + pad, bcy + 10]
-            draw.rounded_rectangle(box, radius=10, fill=30)
-            draw.text((bcx - bw // 2, bcy - 7), badge_str, fill=255, font=fonts["sm"])
+            theme.draw_chip(
+                draw, (cx + int(radius * 0.62), cy - int(radius * 0.8)), badge_str, fonts["body"],
+                align="center", valign="center", fill=30, text_fill=theme.SURFACE,
+            )
 
-    def _draw_goal_pill(self, draw, x, y, w, h, label, value, goal, fonts, fmt="int"):
+            caption = "today"
+            cw = fonts["label"].getlength(caption)
+            draw.text((cx + int(radius * 0.62) - cw // 2, cy - int(radius * 0.8) + 14),
+                       caption, fill=theme.DISABLED, font=fonts["label"])
+
+    def _draw_round_cap(self, draw, cx, cy, radius, thickness, angle_deg, fill):
+        """A filled circle sitting exactly on the arc's centerline, matching
+        its thickness — Pillow's arc has flat (butt) ends, so this simulates
+        M3's rounded stroke cap at a given angle."""
+        angle_rad = math.radians(angle_deg)
+        px = cx + radius * math.cos(angle_rad)
+        py = cy + radius * math.sin(angle_rad)
+        r = thickness / 2
+        draw.ellipse([px - r, py - r, px + r, py + r], fill=fill)
+
+    def _draw_pace_marker(self, draw, cx, cy, radius, thickness, start_angle, pace_pct):
+        """Dashed radial tick at the angle you'd be at with linear daily pacing
+        toward the weekly goal — e.g. 48h into the week at an 8k/day pace sits
+        at the 16k mark."""
+        angle_rad = math.radians(start_angle + pace_pct * 360)
+        cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
+        inner_r = radius - thickness / 2
+        outer_r = radius + thickness / 2
+
+        segments = 5
+        for i in range(segments):
+            if i % 2 == 1:
+                continue  # skip every other segment for the dashed look
+            r0 = inner_r + (outer_r - inner_r) * i / segments
+            r1 = inner_r + (outer_r - inner_r) * (i + 1) / segments
+            p0 = (cx + r0 * cos_a, cy + r0 * sin_a)
+            p1 = (cx + r1 * cos_a, cy + r1 * sin_a)
+            draw.line([p0, p1], fill=theme.SURFACE, width=5)
+            draw.line([p0, p1], fill=theme.ON_SURFACE, width=2)
+
+    def _draw_goal_pill(self, draw, x, y, w, h, label, value, goal, fonts, fmt="int", glyph=None):
         pad_x = 14
         pad_y = 10
 
-        draw.rounded_rectangle([x, y, x + w, y + h], radius=10, outline=180, width=1)
+        theme.draw_card(draw, (x, y, x + w, y + h), fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
 
-        draw.text((x + pad_x, y + pad_y), label, fill=70, font=fonts["sm"])
+        label_x = x + pad_x
+        if glyph:
+            icon_size = 16
+            theme.draw_icon(draw, glyph, (label_x, y + pad_y), size=icon_size,
+                             tone=theme.ON_SURFACE_VARIANT, bg=theme.SURFACE_CONTAINER)
+            label_x += icon_size + theme.SPACE_XS
+        draw.text((label_x, y + pad_y), label, fill=theme.ON_SURFACE_VARIANT, font=fonts["body"])
 
         val_str = self._format_goal_value(value, fmt)
-        vw = fonts["lg"].getlength(val_str)
-        draw.text((x + w - pad_x - vw, y + pad_y - 4), val_str, fill=0, font=fonts["lg"])
+        vw = fonts["title"].getlength(val_str)
+        draw.text((x + w - pad_x - vw, y + pad_y - 4), val_str, fill=theme.ON_SURFACE, font=fonts["title"])
 
         bar_x = x + pad_x
         bar_w = w - pad_x * 2
         bar_h = 12
         bar_y = y + h - pad_y - bar_h - 14
 
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=6, fill=225)
-        pct = min(value / goal, 1.0) if goal else 0.0
-        fill_w = int(bar_w * pct)
-        if fill_w > 0:
-            fill_w = max(fill_w, bar_h)
-            draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], radius=6, fill=40)
+        self._draw_linear_progress(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
+                                    value / goal if goal else 0.0)
 
         goal_str = f"Goal {self._format_goal_value(goal, fmt)}"
-        gw = fonts["xs"].getlength(goal_str)
-        draw.text((x + w - pad_x - gw, bar_y + bar_h + 4), goal_str, fill=130, font=fonts["xs"])
+        gw = fonts["label"].getlength(goal_str)
+        draw.text((x + w - pad_x - gw, bar_y + bar_h + 4), goal_str, fill=theme.DISABLED, font=fonts["label"])
+
+    def _draw_linear_progress(self, draw, box, pct):
+        """M3 linear progress indicator: track, an active indicator with a
+        gap before it, rounded ends, and a stop indicator dot marking the
+        100% goal endpoint."""
+        x0, y0, x1, y1 = box
+        bar_w, bar_h = x1 - x0, y1 - y0
+        pct = max(0.0, min(pct, 1.0))
+        radius = theme.clamp_radius(6, bar_w, bar_h)
+
+        theme.draw_card(draw, box, radius=radius, fill=theme.SURFACE_CONTAINER_HIGH)
+
+        gap = 5 if pct < 0.98 else 0
+        fill_w = bar_w * pct
+        active_w = 0
+        if fill_w > 0:
+            active_w = max(fill_w - gap, 0)
+            if active_w > 0:
+                active_w = min(max(active_w, bar_h), bar_w)
+                theme.draw_card(draw, (x0, y0, x0 + active_w, y1), radius=radius, fill=theme.ON_SURFACE)
+
+        # Stop indicator: a small dot at the goal (100%) end of the track.
+        dot_r = 3
+        dot_cx = x1 - dot_r - 1
+        dot_cy = (y0 + y1) / 2
+        dot_fill = theme.SURFACE if dot_cx <= x0 + active_w else theme.ON_SURFACE
+        draw.ellipse([dot_cx - dot_r, dot_cy - dot_r, dot_cx + dot_r, dot_cy + dot_r], fill=dot_fill)
 
     def _format_goal_value(self, value, fmt: str) -> str:
         if fmt == "time":

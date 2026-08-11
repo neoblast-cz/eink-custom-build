@@ -3,8 +3,9 @@ import urllib.request
 import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from modules.base import BaseModule
+from modules import theme
 
 logger = logging.getLogger(__name__)
 
@@ -158,19 +159,17 @@ class HabitsModule(BaseModule):
         if track_h < 10:
             return
 
-        track_r = max(2, min(bar_w // 2, track_h // 2))
-        draw.rounded_rectangle(
-            [bar_x, track_top, bar_x + bar_w, track_bottom],
-            radius=track_r, fill=235, outline=195, width=1,
-        )
+        theme.draw_card(draw, (bar_x, track_top, bar_x + bar_w, track_bottom),
+                         radius=theme.clamp_radius(bar_w, bar_w, track_h),
+                         fill=theme.SURFACE_CONTAINER_HIGHEST, outline=theme.OUTLINE)
 
         # Faint 50% reference tick
         mid_y = track_bottom - int(track_h * 0.5)
-        draw.line([(bar_x + 3, mid_y), (bar_x + bar_w - 3, mid_y)], fill=210, width=1)
+        draw.line([(bar_x + 3, mid_y), (bar_x + bar_w - 3, mid_y)], fill=theme.OUTLINE, width=1)
 
         # Layer from lightest/longest-window to darkest/most-recent so each
         # shorter window's rounded cap reads as a "liquid level" sitting on top.
-        layers = [(pct_60d, 205), (pct_30d, 115), (pct_7d, 15)]
+        layers = [(pct_60d, theme.DISABLED), (pct_30d, theme.ON_SURFACE_VARIANT), (pct_7d, theme.ON_SURFACE)]
         any_data = False
         for pct, shade in layers:
             if pct is None:
@@ -180,41 +179,19 @@ class HabitsModule(BaseModule):
             if fill_h <= 0:
                 continue
             fill_top = track_bottom - fill_h
-            r = max(2, min(bar_w // 2, fill_h // 2))
+            r = theme.clamp_radius(bar_w, bar_w, fill_h)
             draw.rounded_rectangle([bar_x, fill_top, bar_x + bar_w, track_bottom], radius=r, fill=shade)
 
         if not any_data:
             draw.line(
                 [(bar_x + 5, (track_top + track_bottom) // 2), (bar_x + bar_w - 5, (track_top + track_bottom) // 2)],
-                fill=200, width=2,
+                fill=theme.OUTLINE, width=2,
             )
 
-    def _load_fonts(self):
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/segoeuib.ttf",
-            "C:/Windows/Fonts/segoeui.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ]
-        fonts = {}
-        for size_name, size in [("xl", 36), ("lg", 24), ("md", 16), ("sm", 13), ("xs", 11)]:
-            loaded = False
-            for path in font_paths:
-                try:
-                    fonts[size_name] = ImageFont.truetype(path, size)
-                    loaded = True
-                    break
-                except OSError:
-                    continue
-            if not loaded:
-                fonts[size_name] = ImageFont.load_default()
-        return fonts
-
     def _draw(self, width: int, height: int, data: dict, today, max_display: int) -> Image.Image:
-        img = Image.new("L", (width, height), 255)
+        img = Image.new("L", (width, height), theme.SURFACE)
         draw = ImageDraw.Draw(img)
-        fonts = self._load_fonts()
+        fonts = theme.load_fonts()
 
         habits = data.get("habits", [])[:max_display]
         log = data.get("log", {})
@@ -223,10 +200,11 @@ class HabitsModule(BaseModule):
         days_shown = 15
 
         if not habits:
-            draw.text((margin, margin), "Habits", fill=0, font=fonts["lg"])
-            draw.text((margin, margin + 35), "No habits found.", fill=80, font=fonts["md"])
-            draw.text((margin, margin + 58), "Enter your Habitica credentials in the", fill=120, font=fonts["sm"])
-            draw.text((margin, margin + 78), "module settings page.", fill=120, font=fonts["sm"])
+            theme.draw_empty_state(
+                draw, width, height, "Habits",
+                "Enter your Habitica credentials in the module settings page.",
+                fonts=fonts,
+            )
             return img
 
         # Layout: left section (name + circles + per-habit %) | right section (overall big %)
@@ -247,32 +225,38 @@ class HabitsModule(BaseModule):
 
         y = margin
 
+        # Card behind the whole habit-list panel
+        theme.draw_card(
+            draw, (x_start - 10, margin - 10, col_streak + pct_col_w + 10, height - margin + 4),
+            fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE,
+        )
+
         # Header
-        draw.text((col_name, y), "Habits", fill=0, font=fonts["lg"])
+        draw.text((col_name, y), "Habits", fill=theme.ON_SURFACE, font=fonts["headline"])
 
         # Day labels above circles (today is bold/darker)
         for i in range(days_shown):
             day = today - timedelta(days=days_shown - 1 - i)
             day_label = str(day.day)
             cx = col_circles + i * 22 + 11
-            lw = fonts["xs"].getlength(day_label)
+            lw = fonts["label"].getlength(day_label)
             is_today = (i == days_shown - 1)
             draw.text((cx - lw // 2, y + 4), day_label,
-                      fill=0 if is_today else 160, font=fonts["xs"])
+                      fill=theme.ON_SURFACE if is_today else theme.DISABLED, font=fonts["label"])
 
         # Trend bar header — legend for the layered 7d/30d/60d fill
         trend_label = "7·30·60d"
-        tlw = fonts["xs"].getlength(trend_label)
-        draw.text((col_bar + (bar_col_w - tlw) // 2, y + 4), trend_label, fill=100, font=fonts["xs"])
-        # Streak header with flame-like symbol
+        tlw = fonts["label_sm"].getlength(trend_label)
+        draw.text((col_bar + (bar_col_w - tlw) // 2, y + 5), trend_label, fill=theme.ON_SURFACE_VARIANT, font=fonts["label_sm"])
+        # Streak header
         streak_label = "streak"
-        slw = fonts["xs"].getlength(streak_label)
-        draw.text((col_streak + (pct_col_w - slw) // 2, y + 4), streak_label, fill=100, font=fonts["xs"])
+        slw = fonts["label_sm"].getlength(streak_label)
+        draw.text((col_streak + (pct_col_w - slw) // 2, y + 5), streak_label, fill=theme.ON_SURFACE_VARIANT, font=fonts["label_sm"])
 
         y += 32
 
         # Separator
-        draw.line([(x_start, y), (col_streak + pct_col_w, y)], fill=180, width=1)
+        theme.draw_divider(draw, x_start, y, col_streak + pct_col_w)
         y += 8
 
         # Habit rows
@@ -285,7 +269,7 @@ class HabitsModule(BaseModule):
         today_cx = col_circles + today_col_idx * 22 + 11
         draw.rectangle(
             [today_cx - circle_r - 3, y - 2, today_cx + circle_r + 3, y + row_h * len(habits) + 2],
-            fill=235,
+            fill=theme.SELECTED,
         )
 
         for habit_info in habits:
@@ -293,12 +277,8 @@ class HabitsModule(BaseModule):
             created_date = habit_info.get("created")
 
             # Name (truncate if needed)
-            display_name = habit_name
-            if fonts["md"].getlength(display_name) > name_w - 10:
-                while fonts["md"].getlength(display_name + "..") > name_w - 10 and len(display_name) > 1:
-                    display_name = display_name[:-1]
-                display_name += ".."
-            draw.text((col_name, y + (row_h - 18) // 2), display_name, fill=0, font=fonts["md"])
+            display_name = theme.truncate_to_width(habit_name, fonts["body_lg"], name_w - 10, ellipsis="..")
+            draw.text((col_name, y + (row_h - 18) // 2), display_name, fill=theme.ON_SURFACE, font=fonts["body_lg"])
 
             # Circles for last N days
             for i in range(days_shown):
@@ -312,10 +292,10 @@ class HabitsModule(BaseModule):
 
                 if done:
                     draw.ellipse([cx - circle_r, cy - circle_r, cx + circle_r, cy + circle_r],
-                                  fill=0)
+                                  fill=theme.ON_SURFACE)
                 else:
                     draw.ellipse([cx - circle_r, cy - circle_r, cx + circle_r, cy + circle_r],
-                                  outline=180, width=1)
+                                  outline=theme.OUTLINE, width=1)
 
             # Layered trend bar (7d/30d/60d) replaces the old numeric columns
             pct_7d = self._calc_percentage(log, habit_name, today, 7, created_date)
@@ -323,51 +303,91 @@ class HabitsModule(BaseModule):
             pct_60d = self._calc_percentage(log, habit_name, today, 60, created_date)
             self._draw_trend_bar(draw, col_bar, y, bar_col_w, row_h, pct_7d, pct_30d, pct_60d)
 
-            # Current streak from Habitica API
+            # Current streak, with a flame icon once it's actually a streak
             streak = habit_info.get("streak", 0)
             streak_str = str(streak)
-            sw = fonts["sm"].getlength(streak_str)
-            streak_fill = 0 if streak >= 30 else 80 if streak >= 7 else 160
-            draw.text((col_streak + (pct_col_w - sw) // 2, y + (row_h - 14) // 2),
-                       streak_str, fill=streak_fill, font=fonts["sm"])
+            streak_fill = theme.ON_SURFACE if streak >= 30 else theme.ON_SURFACE_VARIANT if streak >= 7 else theme.DISABLED
+            sw = fonts["body"].getlength(streak_str)
+            icon_w = 12 if streak > 0 else 0
+            total_w = icon_w + (3 if streak > 0 else 0) + sw
+            sx = col_streak + (pct_col_w - total_w) // 2
+            if streak > 0:
+                theme.draw_icon(draw, "flame", (sx, y + (row_h - icon_w) // 2), size=icon_w,
+                                 tone=streak_fill, bg=theme.SURFACE_CONTAINER)
+                sx += icon_w + 3
+            draw.text((sx, y + (row_h - 14) // 2), streak_str, fill=streak_fill, font=fonts["body"])
 
             y += row_h
 
         # Separator below habits
-        draw.line([(x_start, y + 4), (col_streak + pct_col_w, y + 4)], fill=180, width=1)
+        theme.draw_divider(draw, x_start, y + 4, col_streak + pct_col_w)
 
         # ---- Right panel: Level and XP ----
         panel_x = left_w
         panel_center = panel_x + overall_panel_w // 2
 
+        theme.draw_card(
+            draw, (panel_x, margin - 10, width - margin + 10, height - margin + 4),
+            fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE,
+        )
+
         if user_stats:
             lvl = user_stats.get("lvl", 0)
             exp = user_stats.get("exp", 0)
             to_next = user_stats.get("toNextLevel", 0)
+            progress = exp / to_next if to_next > 0 else 0
 
             panel_y = margin + 10
 
             # Level
             lvl_str = f"Lv {lvl}"
-            lw = fonts["lg"].getlength(lvl_str)
-            draw.text((panel_center - lw // 2, panel_y), lvl_str, fill=0, font=fonts["lg"])
-            panel_y += 30
+            lw = fonts["headline"].getlength(lvl_str)
+            draw.text((panel_center - lw // 2, panel_y), lvl_str, fill=theme.ON_SURFACE, font=fonts["headline"])
+            panel_y += 40
 
-            # XP progress bar
-            bar_x = panel_x + 12
-            bar_w = overall_panel_w - 24
-            bar_h = 8
-            progress = exp / to_next if to_next > 0 else 0
-            draw.rectangle([bar_x, panel_y, bar_x + bar_w, panel_y + bar_h],
-                          fill=230, outline=180)
-            if progress > 0:
-                draw.rectangle([bar_x, panel_y, bar_x + int(bar_w * progress), panel_y + bar_h],
-                              fill=80)
-            panel_y += bar_h + 4
-
-            # XP label
+            # XP label, pinned to the bottom of the card
             xp_str = f"{exp}/{to_next} XP"
-            xw = fonts["xs"].getlength(xp_str)
-            draw.text((panel_center - xw // 2, panel_y), xp_str, fill=120, font=fonts["xs"])
+            xw = fonts["label"].getlength(xp_str)
+            xp_y = height - margin - 6
+            draw.text((panel_center - xw // 2, xp_y), xp_str, fill=theme.DISABLED, font=fonts["label"])
+
+            # XP grid fills the rest of the panel — each dot is a chunk of XP
+            # toward the next level; filled dots swap from a plain circle to
+            # a bolder rounded square, so progress reads by shape as well as
+            # tone (in the spirit of M3's shape system).
+            grid_top = panel_y
+            grid_bottom = xp_y - 10
+            self._draw_xp_grid(draw, panel_x + 12, grid_top, width - margin - 2 - (panel_x + 12), grid_bottom - grid_top, progress)
 
         return img
+
+    def _draw_xp_grid(self, draw, x, y, w, h, fraction):
+        """A grid of small shapes standing in for XP progress toward the next
+        level. Unfilled = a plain light dot; filled = a bolder dark rounded
+        square, so the boundary reads by shape, not just shade. Fills from
+        the bottom up, like a rising gauge."""
+        cell = 18
+        cols = max(1, int(w // cell))
+        rows = max(1, int(h // cell))
+        total = cols * rows
+        if total <= 0 or cols <= 0:
+            return
+
+        filled_count = round(total * max(0.0, min(fraction, 1.0)))
+        grid_w = cols * cell
+        offset_x = x + (w - grid_w) / 2
+
+        idx = 0
+        for r in range(rows - 1, -1, -1):
+            for c in range(cols):
+                dot_cx = offset_x + c * cell + cell / 2
+                dot_cy = y + r * cell + cell / 2
+                if idx < filled_count:
+                    s = 6
+                    theme.draw_card(draw, (dot_cx - s, dot_cy - s, dot_cx + s, dot_cy + s),
+                                     radius=3, fill=theme.ON_SURFACE)
+                else:
+                    rdot = 3
+                    draw.ellipse([dot_cx - rdot, dot_cy - rdot, dot_cx + rdot, dot_cy + rdot],
+                                 fill=theme.SURFACE_CONTAINER_HIGH, outline=theme.OUTLINE)
+                idx += 1

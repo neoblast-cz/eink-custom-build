@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Analytics{% endblock %}
+{% block content %}
+<h2>Analytics</h2>
+<p class="hint">Local-only dashboard over your Google/Fitbit health export. Not part of the e-ink display or the Pi deploy.</p>
+
+{% if not has_data %}
+<div class="empty-state">
+  <p>No "Google Health" export folder found next to the app.</p>
+  <p class="hint">This page reads from a local, gitignored export folder — it only works on machines where that data has been placed.</p>
+</div>
+{% else %}
+<div class="analytics-grid">
+
+  <div class="chart-card wide">
+    <h3>Weight</h3>
+    <canvas id="weightChart"></canvas>
+  </div>
+
+  <div class="chart-card wide">
+    <h3>Steps per day</h3>
+    <canvas id="stepsChart"></canvas>
+  </div>
+
+  <div class="chart-card">
+    <h3>Sleep score &amp; deep sleep</h3>
+    <canvas id="sleepChart"></canvas>
+    <p class="hint">Recent nights only — Fitbit's Sleep Score export doesn't go back further.</p>
+  </div>
+
+  <div class="chart-card">
+    <h3>Meal type distribution</h3>
+    <canvas id="mealTypeChart"></canvas>
+    <p class="hint">The food log has names, meal type, and day — no calorie/macro numbers or real per-meal clock time.</p>
+  </div>
+
+  <div class="chart-card">
+    <h3>Most-logged foods</h3>
+    <canvas id="topFoodsChart"></canvas>
+  </div>
+
+  <div class="chart-card">
+    <h3>Food logging consistency</h3>
+    <canvas id="logsPerDayChart"></canvas>
+  </div>
+
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+        integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt"
+        crossorigin="anonymous"></script>
+<script>
+{% if has_data %}
+const weight = {{ weight | tojson }};
+const steps = {{ steps | tojson }};
+const sleep = {{ sleep | tojson }};
+const nutrition = {{ nutrition | tojson }};
+
+Chart.defaults.color = '#8b8fa3';
+Chart.defaults.borderColor = '#2a2e42';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+const ACCENT = '#e94560';
+const SUCCESS = '#2ecc71';
+const TEXT = '#e8e8e8';
+
+new Chart(document.getElementById('weightChart'), {
+  type: 'line',
+  data: {
+    labels: weight.map(e => e.date),
+    datasets: [{
+      label: 'Weight (kg)',
+      data: weight.map(e => e.weight),
+      borderColor: ACCENT,
+      backgroundColor: ACCENT,
+      pointRadius: 2,
+      tension: 0.2,
+    }],
+  },
+  options: {
+    responsive: true,
+    scales: { x: { ticks: { maxTicksLimit: 10 } } },
+  },
+});
+
+new Chart(document.getElementById('stepsChart'), {
+  type: 'bar',
+  data: {
+    labels: steps.map(e => e.date),
+    datasets: [{
+      label: 'Steps',
+      data: steps.map(e => e.steps),
+      backgroundColor: '#e9456055',
+      borderColor: ACCENT,
+      borderWidth: 1,
+    }],
+  },
+  options: {
+    responsive: true,
+    scales: { x: { ticks: { maxTicksLimit: 10 } } },
+  },
+});
+
+new Chart(document.getElementById('sleepChart'), {
+  type: 'line',
+  data: {
+    labels: sleep.map(e => e.date),
+    datasets: [
+      {
+        label: 'Sleep score',
+        data: sleep.map(e => e.score),
+        borderColor: SUCCESS,
+        backgroundColor: SUCCESS,
+        yAxisID: 'y',
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Deep sleep (min)',
+        data: sleep.map(e => e.deep_minutes),
+        borderColor: ACCENT,
+        backgroundColor: ACCENT,
+        yAxisID: 'y1',
+        pointRadius: 2,
+        tension: 0.2,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    scales: {
+      x: { ticks: { maxTicksLimit: 8 } },
+      y: { position: 'left', min: 0, max: 100, title: { display: true, text: 'Score' } },
+      y1: { position: 'right', min: 0, grid: { drawOnChartArea: false }, title: { display: true, text: 'Minutes' } },
+    },
+  },
+});
+
+const mealTypeCounts = nutrition.meal_type_counts;
+new Chart(document.getElementById('mealTypeChart'), {
+  type: 'doughnut',
+  data: {
+    labels: Object.keys(mealTypeCounts),
+    datasets: [{
+      data: Object.values(mealTypeCounts),
+      backgroundColor: [ACCENT, SUCCESS, '#5b8def', '#f5a623'],
+    }],
+  },
+  options: { responsive: true },
+});
+
+const topFoods = nutrition.top_foods;
+new Chart(document.getElementById('topFoodsChart'), {
+  type: 'bar',
+  data: {
+    labels: topFoods.map(f => f[0]),
+    datasets: [{
+      label: 'Times logged',
+      data: topFoods.map(f => f[1]),
+      backgroundColor: ACCENT,
+    }],
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: { legend: { display: false } },
+  },
+});
+
+const logsPerDay = nutrition.logs_per_day;
+new Chart(document.getElementById('logsPerDayChart'), {
+  type: 'bar',
+  data: {
+    labels: logsPerDay.map(e => e.date),
+    datasets: [{
+      label: 'Entries logged',
+      data: logsPerDay.map(e => e.count),
+      backgroundColor: '#5b8def',
+    }],
+  },
+  options: {
+    responsive: true,
+    scales: { x: { ticks: { maxTicksLimit: 8 } } },
+    plugins: { legend: { display: false } },
+  },
+});
+{% endif %}
+</script>
+{% endblock %}

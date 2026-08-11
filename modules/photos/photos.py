@@ -1,8 +1,9 @@
 import logging
 import random
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from modules.base import BaseModule
+from modules import theme
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +63,7 @@ class PhotosModule(BaseModule):
             return canvas
 
     def _no_photos_image(self, width: int, height: int) -> Image.Image:
-        img = Image.new("L", (width, height), 255)
+        img = Image.new("L", (width, height), theme.SURFACE)
         draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.truetype("arial.ttf", 20)
-        except OSError:
-            font = ImageFont.load_default()
-        text = "No photos found. Upload some via the web UI!"
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        draw.text(((width - tw) // 2, height // 2 - 10), text, fill=0, font=font)
+        theme.draw_empty_state(draw, width, height, "No Photos", "Upload some via the web UI")
         return img
