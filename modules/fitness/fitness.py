@@ -53,9 +53,11 @@ class FitnessModule(BaseModule):
 
         # How far into the week we are, as a fraction — e.g. 48h into a week
         # is 2/7, so a linear day-by-day pace should be at 2x the daily goal.
-        now = datetime.now()
-        week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
-        pace_pct = min((now - week_start).total_seconds() / (7 * 86400), 1.0)
+        # Snapped to the current hour so the marker steps once an hour rather
+        # than drifting on every render (this module rotates every ~5 min).
+        hour_now = datetime.now().replace(minute=0, second=0, microsecond=0)
+        week_start = hour_now.replace(hour=0) - timedelta(days=hour_now.weekday())
+        pace_pct = min((hour_now - week_start).total_seconds() / (7 * 86400), 1.0)
 
         return self._draw(
             width, height, steps, steps_goal, distance, distance_goal,
@@ -270,14 +272,9 @@ class FitnessModule(BaseModule):
         draw.arc(bbox, 0, 360, fill=theme.SURFACE_CONTAINER_HIGHEST, width=thickness)
         if pct > 0:
             # M3 circular progress indicator: a small angular gap separates the
-            # active arc from the remaining track, with rounded stroke caps on
-            # the active arc's ends. This ring is unusually thick, so a cap
-            # radius of a full half-thickness reads as a bulging blob and can
-            # swallow a small gap outright — use a softer partial rounding and
-            # size the gap to stay visible past the cap's angular footprint.
-            cap_r = thickness * 0.3
+            # active arc from the remaining track.
             end_angle = start_angle + pct * 360
-            gap_deg = min(20, pct * 360 * 0.4) if pct < 0.98 else 0
+            gap_deg = min(8, pct * 360 * 0.3) if pct < 0.98 else 0
             active_end_angle = end_angle - gap_deg
 
             draw.arc(bbox, start_angle, active_end_angle, fill=theme.ON_SURFACE, width=thickness)
@@ -285,8 +282,6 @@ class FitnessModule(BaseModule):
                 # Erase a sliver back to the plain background so the track
                 # visibly resumes after the gap.
                 draw.arc(bbox, active_end_angle, end_angle, fill=theme.SURFACE, width=thickness)
-            self._draw_round_cap(draw, cx, cy, radius, cap_r * 2, start_angle, theme.ON_SURFACE)
-            self._draw_round_cap(draw, cx, cy, radius, cap_r * 2, active_end_angle, theme.ON_SURFACE)
 
         # Pace marker: a dashed radial tick showing where a linear day-by-day
         # pace toward the weekly goal would put you right now.
@@ -317,16 +312,6 @@ class FitnessModule(BaseModule):
             draw.text((cx + int(radius * 0.62) - cw // 2, cy - int(radius * 0.8) + 14),
                        caption, fill=theme.DISABLED, font=fonts["label"])
 
-    def _draw_round_cap(self, draw, cx, cy, radius, thickness, angle_deg, fill):
-        """A filled circle sitting exactly on the arc's centerline, matching
-        its thickness — Pillow's arc has flat (butt) ends, so this simulates
-        M3's rounded stroke cap at a given angle."""
-        angle_rad = math.radians(angle_deg)
-        px = cx + radius * math.cos(angle_rad)
-        py = cy + radius * math.sin(angle_rad)
-        r = thickness / 2
-        draw.ellipse([px - r, py - r, px + r, py + r], fill=fill)
-
     def _draw_pace_marker(self, draw, cx, cy, radius, thickness, start_angle, pace_pct):
         """Dashed radial tick at the angle you'd be at with linear daily pacing
         toward the weekly goal — e.g. 48h into the week at an 8k/day pace sits
@@ -351,13 +336,13 @@ class FitnessModule(BaseModule):
         pad_x = 14
         pad_y = 10
 
-        theme.draw_card(draw, (x, y, x + w, y + h), fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
+        theme.draw_card(draw, (x, y, x + w, y + h), fill=theme.SURFACE, outline=theme.OUTLINE)
 
         label_x = x + pad_x
         if glyph:
             icon_size = 16
             theme.draw_icon(draw, glyph, (label_x, y + pad_y), size=icon_size,
-                             tone=theme.ON_SURFACE_VARIANT, bg=theme.SURFACE_CONTAINER)
+                             tone=theme.ON_SURFACE_VARIANT, bg=theme.SURFACE)
             label_x += icon_size + theme.SPACE_XS
         draw.text((label_x, y + pad_y), label, fill=theme.ON_SURFACE_VARIANT, font=fonts["body"])
 

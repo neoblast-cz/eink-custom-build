@@ -228,7 +228,7 @@ class HabitsModule(BaseModule):
         # Card behind the whole habit-list panel
         theme.draw_card(
             draw, (x_start - 10, margin - 10, col_streak + pct_col_w + 10, height - margin + 4),
-            fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE,
+            fill=theme.SURFACE, outline=theme.OUTLINE,
         )
 
         # Header
@@ -313,7 +313,7 @@ class HabitsModule(BaseModule):
             sx = col_streak + (pct_col_w - total_w) // 2
             if streak > 0:
                 theme.draw_icon(draw, "flame", (sx, y + (row_h - icon_w) // 2), size=icon_w,
-                                 tone=streak_fill, bg=theme.SURFACE_CONTAINER)
+                                 tone=streak_fill, bg=theme.SURFACE)
                 sx += icon_w + 3
             draw.text((sx, y + (row_h - 14) // 2), streak_str, fill=streak_fill, font=fonts["body"])
 
@@ -328,7 +328,7 @@ class HabitsModule(BaseModule):
 
         theme.draw_card(
             draw, (panel_x, margin - 10, width - margin + 10, height - margin + 4),
-            fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE,
+            fill=theme.SURFACE, outline=theme.OUTLINE,
         )
 
         if user_stats:

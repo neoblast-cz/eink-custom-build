@@ -107,8 +107,8 @@ class CalendarModule(BaseModule):
 
         left_card = (outer_margin, outer_margin, left_w, height - outer_margin)
         right_card = (left_w + gutter, outer_margin, width - outer_margin, height - outer_margin)
-        theme.draw_card(draw, left_card, fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
-        theme.draw_card(draw, right_card, fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
+        theme.draw_card(draw, left_card, fill=theme.SURFACE, outline=theme.OUTLINE)
+        theme.draw_card(draw, right_card, fill=theme.SURFACE, outline=theme.OUTLINE)
 
         self._draw_month_grid(
             draw, left_card[0] + pad, left_card[1] + pad,

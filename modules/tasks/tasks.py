@@ -106,7 +106,7 @@ class TasksModule(BaseModule):
 
         pad = 15
         theme.draw_card(draw, (margin, y, width - margin, height - margin),
-                         fill=theme.SURFACE_CONTAINER, outline=theme.OUTLINE)
+                         fill=theme.SURFACE, outline=theme.OUTLINE)
 
         hab = settings.get("_habitica_settings", {})
         has_creds = bool(hab.get("habitica_user_id")) and bool(hab.get("habitica_api_token"))
