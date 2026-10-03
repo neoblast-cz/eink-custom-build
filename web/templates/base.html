@@ -13,11 +13,12 @@
       <a href="/">Dashboard</a>
       <a href="/photos">Photos</a>
       <a href="/analytics">Analytics</a>
+      <a href="/finance">Finance</a>
       <a href="/settings">Settings</a>
       <a href="/permissions">Permissions</a>
     </div>
   </nav>
-  <main>
+  <main class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 </body>

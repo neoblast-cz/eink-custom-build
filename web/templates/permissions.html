@@ -37,6 +37,45 @@
          value="{{ config.get('fitbit', 'redirect_uri', default='https://raspberrypi:8080/oauth/fitbit/callback') }}"
          placeholder="https://raspberrypi:8080/oauth/fitbit/callback">
 
+  <hr>
+
+  <h3>Google (Finance dashboard)</h3>
+  <p class="hint">Used by the local-only <a href="/finance">Finance</a> dashboard: reads your portfolio Google Sheet,
+    writes "Snapshot" rows to it on demand, and uploads snapshot screenshots to your Drive (via the narrow
+    <code>drive.file</code> scope — only files this app creates, never the rest of your Drive). Create an OAuth
+    client at
+    <a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com/apis/credentials</a>
+    (type "Web application"), add the redirect URI below to its allowed list, and enable both the Google Sheets API
+    and the Google Drive API for the project.
+    {% if finance_authorized %}<span style="color: #6f6;">Authorized.</span>{% endif %}</p>
+
+  <label for="google_client_id">Client ID</label>
+  <input type="text" id="google_client_id" name="google_client_id"
+         value="{{ config.get('google', 'client_id', default='') }}"
+         placeholder="xxxxx.apps.googleusercontent.com">
+
+  <label for="google_client_secret">Client Secret</label>
+  <input type="password" id="google_client_secret" name="google_client_secret"
+         value="{{ config.get('google', 'client_secret', default='') }}"
+         placeholder="GOCSPX-...">
+
+  <label for="google_redirect_uri">Redirect URI</label>
+  <input type="text" id="google_redirect_uri" name="google_redirect_uri"
+         value="{{ config.get('google', 'redirect_uri', default='http://localhost:8080/oauth/google_sheets/callback') }}"
+         placeholder="http://localhost:8080/oauth/google_sheets/callback">
+  <p class="hint">Since this only ever runs locally, Google allows a plain HTTP localhost redirect — no manual code copy-paste needed, unlike Fitbit.</p>
+
+  <div class="form-actions">
+    <a href="/oauth/google_sheets/start" class="btn-secondary">
+      {{ 'Re-authorize with Google' if finance_authorized else 'Authorize with Google' }}
+    </a>
+  </div>
+  <p class="hint">
+    Re-authorize any time the dashboard reports a permissions error (e.g. after a new feature needs a broader
+    scope, like the snapshot tool needing write access) — save Permissions above first if you just changed the
+    client ID/secret.
+  </p>
+
   <div class="form-actions">
     <button type="submit" class="btn-primary">Save Permissions</button>
     <a href="/" class="btn-secondary">Cancel</a>

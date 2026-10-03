@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import urllib.error
 from pathlib import Path
 
 # Allow OAuth over HTTP for local/LAN use (no HTTPS on Pi)
@@ -9,6 +10,7 @@ from flask import (
     Flask, render_template, request, redirect, url_for, jsonify, send_file,
 )
 from web import analytics_data
+from web import finance_data
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +114,17 @@ def create_app(config, module_registry, scheduler):
             if fb_redirect:
                 config.set(fb_redirect, "fitbit", "redirect_uri")
 
+            # Google credentials (used by the local-only Finance dashboard)
+            g_id = request.form.get("google_client_id", "").strip()
+            g_secret = request.form.get("google_client_secret", "").strip()
+            g_redirect = request.form.get("google_redirect_uri", "").strip()
+            if g_id:
+                config.set(g_id, "google", "client_id")
+            if g_secret:
+                config.set(g_secret, "google", "client_secret")
+            if g_redirect:
+                config.set(g_redirect, "google", "redirect_uri")
+
             config.save()
             return redirect(url_for("permissions"))
 
@@ -119,6 +132,7 @@ def create_app(config, module_registry, scheduler):
             "permissions.html",
             config=config,
             habitica_settings=config.module_settings("habits"),
+            finance_authorized=finance_data.available(config),
         )
 
     @app.route("/module/<name>", methods=["GET", "POST"])
@@ -338,5 +352,176 @@ def create_app(config, module_registry, scheduler):
         except Exception as e:
             logger.error(f"Fitbit token exchange error: {e}")
             return jsonify({"error": str(e)}), 500
+
+    # ---- Local-only financial dashboard, backed by a live Google Sheet.
+    # Not part of the e-ink rendering pipeline or the Pi deploy. ----
+
+    @app.route("/finance")
+    def finance():
+        """Serves the React+MUI single-page app shell — all real data comes
+        from /finance/api/data, fetched client-side after mount."""
+        return render_template("finance_app.html")
+
+    @app.route("/finance/api/data")
+    def finance_api_data():
+        spreadsheet_id = config.get("finance", "spreadsheet_id", default="")
+        authorized = finance_data.is_authorized()
+
+        if not spreadsheet_id or not authorized:
+            return jsonify({
+                "has_data": False,
+                "spreadsheet_configured": bool(spreadsheet_id),
+                "google_authorized": authorized,
+            })
+        try:
+            data = finance_data.get_dashboard_data(config)
+        except finance_data.NotAuthorized:
+            return jsonify({
+                "has_data": False,
+                "spreadsheet_configured": bool(spreadsheet_id),
+                "google_authorized": False,
+            })
+        except Exception as e:
+            logger.error(f"Finance dashboard fetch failed: {e}")
+            return jsonify({
+                "has_data": False,
+                "spreadsheet_configured": bool(spreadsheet_id),
+                "google_authorized": authorized,
+                "fetch_error": str(e),
+            })
+        return jsonify({"has_data": True, **data})
+
+    @app.route("/finance/api/spreadsheet", methods=["POST"])
+    def finance_api_spreadsheet():
+        """Save the spreadsheet URL/ID pasted on the not-authorized setup screen."""
+        body = request.get_json(silent=True) or {}
+        raw = (body.get("spreadsheet_url") or "").strip()
+        # Accept either a bare ID or a full /d/<id>/ URL.
+        match = re.search(r"/d/([a-zA-Z0-9-_]+)", raw)
+        spreadsheet_id = match.group(1) if match else raw
+        if spreadsheet_id:
+            config.set(spreadsheet_id, "finance", "spreadsheet_id")
+            config.save()
+        return jsonify({"ok": True})
+
+    @app.route("/finance/api/snapshot", methods=["POST"])
+    def finance_api_snapshot():
+        """On-demand: append a row of headline numbers, plus a link to a
+        full-page dashboard screenshot uploaded to Drive, to a "Snapshot"
+        tab in the user's own spreadsheet. Needs the read-write Sheets
+        scope (and drive.file for the screenshot) — a token issued before
+        those scopes were added will 403 on the Sheets write, reported
+        distinctly (re-authorize in Permissions) rather than as a generic
+        failure. A Drive-only failure doesn't reach here — save_snapshot
+        catches it internally so the numbers row still saves regardless,
+        and reports it back via screenshot_error instead."""
+        try:
+            result = finance_data.save_snapshot(config, request.host_url)
+            return jsonify({"ok": True, **result})
+        except finance_data.NotAuthorized as e:
+            return jsonify({"ok": False, "error": str(e)}), 401
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="replace")
+            logger.error(f"Finance snapshot write failed: {e.code} {body}")
+            if e.code == 403:
+                return jsonify({
+                    "ok": False,
+                    "error": "insufficient_scope",
+                    "message": "Google Sheets is only authorized for read access. Re-authorize in Permissions to allow writing a snapshot.",
+                }), 403
+            return jsonify({"ok": False, "error": f"Google Sheets error: {e.code}"}), 502
+        except Exception as e:
+            logger.error(f"Finance snapshot write failed: {e}")
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # ---- Google OAuth for the Finance dashboard's Sheets access ----
+
+    @app.route("/oauth/google_sheets/start")
+    def oauth_google_sheets_start():
+        """Redirect straight to Google's consent screen. Unlike Fitbit, Google
+        allows plain-HTTP localhost redirect URIs, so this can be a real
+        automatic redirect instead of a manual copy-paste flow."""
+        import urllib.parse as _urlparse
+
+        client_id = config.get("google", "client_id", default="")
+        redirect_uri = config.get(
+            "google", "redirect_uri",
+            default="http://localhost:8080/oauth/google_sheets/callback",
+        )
+        if not client_id:
+            return "Set Google credentials in Permissions first", 400
+
+        params = _urlparse.urlencode({
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            # Read-write Sheets (not .readonly) for appending snapshot rows,
+            # plus drive.file (not full Drive access) for uploading visual
+            # snapshot screenshots — drive.file only grants access to files
+            # this app itself creates, never the rest of the user's Drive.
+            # Existing tokens issued under an older/narrower scope won't
+            # gain the new access on refresh; re-authorizing is required.
+            "scope": "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
+            "access_type": "offline",
+            "prompt": "consent",
+        })
+        return redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+    @app.route("/oauth/google_sheets/callback")
+    def oauth_google_sheets_callback():
+        """Google redirects here with ?code=... directly (no manual paste needed)."""
+        import json as json_mod
+        import urllib.request as _urlreq
+        import urllib.parse as _urlparse
+        import urllib.error as _urlerr
+        import time
+
+        error = request.args.get("error")
+        if error:
+            return f"Google authorization failed: {error}", 400
+
+        code = request.args.get("code", "").strip()
+        if not code:
+            return "No authorization code received", 400
+
+        client_id = config.get("google", "client_id", default="")
+        client_secret = config.get("google", "client_secret", default="")
+        redirect_uri = config.get(
+            "google", "redirect_uri",
+            default="http://localhost:8080/oauth/google_sheets/callback",
+        )
+        if not client_id or not client_secret:
+            return "Google credentials not configured", 400
+
+        data = _urlparse.urlencode({
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+        }).encode()
+
+        req = _urlreq.Request(
+            "https://oauth2.googleapis.com/token",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        try:
+            with _urlreq.urlopen(req, timeout=15) as resp:
+                token_data = json_mod.loads(resp.read())
+
+            token_data["expires_at"] = time.time() + token_data.get("expires_in", 3600)
+            finance_data.save_token(token_data)
+
+            logger.info("Google Sheets authorized successfully")
+            return redirect(url_for("finance"))
+        except _urlerr.HTTPError as e:
+            error_body = e.read().decode()
+            logger.error(f"Google token exchange failed: {e.code} {error_body}")
+            return f"Google returned {e.code}: {error_body}", 400
+        except Exception as e:
+            logger.error(f"Google token exchange error: {e}")
+            return str(e), 500
 
     return app

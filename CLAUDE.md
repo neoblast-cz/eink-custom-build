@@ -15,13 +15,16 @@ modules/
   base.py               # BaseModule ABC — all modules inherit this
   photos/               # Rotate uploaded images
   calendar_mod/         # ICS URL calendar
-  tasks/                # Google Tasks (OAuth)
+  tasks/                # Habitica to-dos
   habits/               # Habitica dailies + stats
   fitness/              # Fitbit activity data
 web/
   routes.py             # All Flask routes (single file)
+  analytics_data.py     # Local-only Health Analytics dashboard data (see below)
+  finance_data.py       # Local-only Finance dashboard data (see below)
   templates/
     base.html / index.html / settings.html / photos_manage.html
+    analytics.html / finance.html
     modules/            # One config form per module
 static/
   style.css             # Dark theme
@@ -61,9 +64,16 @@ python app.py          # Web UI at http://localhost:8080
 |------|-------------|
 | `photos` | Rotates uploaded photos one per refresh |
 | `calendar` | Renders ICS calendar (no Google OAuth needed) |
-| `tasks` | Google Tasks via OAuth |
+| `tasks` | Habitica to-dos |
 | `habits` | Habitica dailies, streaks, completion %, level/XP |
 | `fitness` | Fitbit activity/steps/HR |
+
+## Local-Only Dashboards (not part of the e-ink pipeline)
+
+Two extra web pages exist purely for local use — they never render to the e-ink display and are inert on the Pi (their data sources are local-machine-only), so nothing about them needs to be part of a deploy:
+
+- **`/analytics`** (`web/analytics_data.py`) — reads a gitignored `Google Health/` export folder placed next to the app. Shows weight/steps/sleep trends and food-logging patterns.
+- **`/finance`** (`web/finance_data.py`) — reads a portfolio Google Sheet live via OAuth (`google_sheets_token.json`, gitignored). Credentials live under the `"google"` config key (Permissions page) alongside a `"finance"` config key holding the target `spreadsheet_id`. Unlike Fitbit's OAuth (forced into a manual copy-paste flow because the Pi serves plain HTTP), this redirects automatically since Google explicitly permits HTTP `localhost` redirect URIs and the feature only ever runs locally.
 
 ## Deployment (Pi)
 

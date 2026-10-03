@@ -5,3 +5,10 @@ requests>=2.31
 python-dateutil>=2.8
 google-auth-oauthlib>=1.0
 google-api-python-client>=2.80
+# Local-only: powers the Finance dashboard's "visual snapshot" feature
+# (headless-browser screenshot of the React/Chart.js page). The only place
+# in this project that isn't Pillow-only — the e-ink modules stay
+# Pillow-only as documented in CLAUDE.md — but this dashboard never runs
+# on the Pi, so it doesn't carry that cost. Needs a one-time browser
+# download: `playwright install chromium`.
+playwright>=1.40

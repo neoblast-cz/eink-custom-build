@@ -322,6 +322,235 @@ input[type="file"] {
 
 .chart-card canvas { max-height: 320px; }
 
+/* Hero figure + stat tiles (finance dashboard) */
+.hero-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.4rem 1.6rem;
+  margin-top: 1rem;
+}
+
+.hero-figure-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.3rem;
+}
+
+.hero-figure-value {
+  font-size: 3rem;
+  font-weight: 700;
+  font-variant-numeric: proportional-nums;
+  line-height: 1;
+}
+
+.stat-tiles {
+  display: flex;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+}
+
+.stat-tile-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.stat-tile-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 0.2rem;
+}
+
+.stat-tile-value.delta-up { color: var(--success); }
+.stat-tile-value.delta-down { color: var(--danger); }
+
+/* Generic delta coloring — reused wherever a gain/loss figure needs it
+   without pulling in the full stat-tile/holding-card markup. */
+.delta-up { color: var(--success); }
+.delta-down { color: var(--danger); }
+
+/* Projection tool (finance dashboard) */
+.projection-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-end;
+  margin: 0.8rem 0 1.2rem;
+}
+
+.projection-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.projection-controls input[type="date"] {
+  background: #333;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+}
+
+.projection-controls input[type="range"] {
+  width: 260px;
+  accent-color: var(--accent);
+}
+
+.projection-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6rem;
+  margin-bottom: 1rem;
+}
+
+/* Holding cards (finance dashboard) */
+.holding-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.holding-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+
+.holding-card-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  margin-bottom: 0.1rem;
+}
+
+.holding-card-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.holding-card-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+}
+
+.holding-card-row .label { color: var(--muted); }
+
+.holding-card-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0.4rem 0 0.5rem;
+}
+
+.holding-card-gain.delta-up { color: var(--success); }
+.holding-card-gain.delta-down { color: var(--danger); }
+
+.holding-transactions {
+  margin-top: 0.7rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.holding-transactions summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.holding-transactions summary:hover { color: var(--text); }
+
+.holding-transactions > div,
+.holding-transactions table {
+  margin-top: 0.6rem;
+}
+
+.holding-overview {
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--border);
+}
+
+.holding-overview .holding-card-row {
+  font-size: 0.78rem;
+  padding: 0.15rem 0;
+}
+
+.holding-transactions table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.holding-transactions th,
+.holding-transactions td {
+  text-align: right;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.holding-transactions th:first-child,
+.holding-transactions td:first-child,
+.holding-transactions th:nth-child(2),
+.holding-transactions td:nth-child(2) {
+  text-align: left;
+}
+
+.holding-transactions th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  display: block;
+  overflow-x: auto;
+  margin-top: 0.5rem;
+}
+
+.compare-table th,
+.compare-table td {
+  text-align: right;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.compare-table th:first-child,
+.compare-table td:first-child,
+.compare-table th:nth-child(2),
+.compare-table td:nth-child(2) {
+  text-align: left;
+}
+
+.compare-table th {
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-strong, var(--border));
+}
+
+.compare-table td[title] {
+  cursor: help;
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 3px;
+}
+
 /* Rotation entries */
 .rotation-entry {
   display: flex;
@@ -437,4 +666,121 @@ input[type="file"] {
 
 .settings-collapsible .settings-form {
   max-width: 100%;
+}
+
+/* Finance dashboard — sidebar layout */
+main.finance-page {
+  max-width: 1400px;
+}
+
+.finance-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 2rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+.finance-nav {
+  position: sticky;
+  top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.finance-nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-left: 2px solid transparent;
+}
+
+.finance-nav a svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.finance-nav a:hover { color: var(--text); background: var(--surface); }
+
+.finance-nav a.active {
+  color: var(--text);
+  background: var(--surface);
+  border-left-color: var(--accent);
+}
+
+.finance-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2.4rem;
+  min-width: 0;
+}
+
+.finance-section {
+  scroll-margin-top: 1.5rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-header .section-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.section-header .section-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.section-header h2 {
+  margin-bottom: 0.15rem;
+}
+
+.section-header p.hint {
+  margin: 0;
+}
+
+.section-title-group h2 {
+  font-size: 1.3rem;
+}
+
+.category-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.4rem;
+  margin-bottom: 1.2rem;
+}
+
+@media (max-width: 900px) {
+  .finance-layout { grid-template-columns: 1fr; }
+
+  .finance-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.4rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .finance-nav a { white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; }
+  .finance-nav a.active { border-bottom-color: var(--accent); }
 }
